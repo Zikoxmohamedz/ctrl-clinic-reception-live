@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>تسجيل الدخول — ctrl.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+Arabic:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260719-production-only">
+</head>
+<body class="login-page">
+  <button class="theme-fab" id="theme-toggle" aria-label="تبديل المظهر">☾</button>
+  <main class="login-shell">
+    <section class="login-brand">
+      <div class="brand-logo">ctrl<span>.</span></div>
+      <div>
+        <p class="eyebrow">إدارة أبسط. رؤية أوضح.</p>
+        <h1>نظام استقبال<br>الكلينك</h1>
+        <p class="brand-copy">كل صرف وإضافة وتحويل في مكان واحد، من أول اليوم لآخر تقرير.</p>
+      </div>
+      <div class="brand-stats"><span>مباشر</span><i></i><span>آمن</span><i></i><span>متعدد الفروع</span></div>
+    </section>
+    <section class="login-form-side">
+      <form id="login-form" class="login-form">
+        <div class="mobile-brand brand-logo">ctrl<span>.</span></div>
+        <p class="eyebrow blue">مرحباً بعودتك</p>
+        <h2>تسجيل الدخول</h2>
+        <p class="form-lead">أدخل بيانات حسابك للوصول إلى لوحة التحكم.</p>
+        <label>اسم المستخدم<input name="username" type="text" autocomplete="username" placeholder="اسم المستخدم" required></label>
+        <label>كلمة المرور
+          <span class="password-field"><input name="password" type="password" autocomplete="current-password" placeholder="••••••••" required><button type="button" id="show-password" aria-label="إظهار كلمة المرور">◉</button></span>
+        </label>
+        <button class="btn primary wide" type="submit"><span>دخول النظام</span><b>←</b></button>
+        <p id="login-error" class="form-error" role="alert"></p>
+      </form>
+      <p class="login-footer">ctrl. reception system · إصدار 1.0</p>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script type="module" src="theme.js"></script>
+  <script type="module" src="auth.js?v=20260719-production-only"></script>
+</body>
+</html>

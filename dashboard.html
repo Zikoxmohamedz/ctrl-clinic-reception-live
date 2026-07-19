@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>لوحة التحكم — ctrl.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=Noto+Sans+Arabic:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v=20260719-history-choice">
+</head>
+<body class="app-page">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head"><a class="brand-logo" href="#home">ctrl<span>.</span></a><button id="sidebar-toggle" aria-label="طي القائمة">›</button></div>
+      <nav class="nav-list" aria-label="التنقل الرئيسي">
+        <a href="#home" data-route="home"><span class="nav-icon">⌂</span><span>لوحة التحكم</span></a>
+        <a href="#consumption" data-route="consumption"><span class="nav-icon">◫</span><span>صرف المواد</span></a>
+        <a href="#additions" data-route="additions"><span class="nav-icon">＋</span><span>الإضافات</span></a>
+        <a href="#reports" data-route="reports"><span class="nav-icon">⌁</span><span>التقارير</span></a>
+        <a href="#records" data-route="records"><span class="nav-icon">✎</span><span>إدارة السجلات</span></a>
+        <a href="#settings" data-route="settings"><span class="nav-icon">⚙</span><span>الإعدادات</span></a>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="branch-card"><span>الفرع الحالي</span><strong data-branch-name>فرع مدينة نصر</strong></div>
+        <div class="user-card"><span class="avatar" data-user-initial>م</span><div><strong data-user-name>مدير النظام</strong><small data-user-role>مدير</small></div><button id="logout" title="خروج">↪</button></div>
+      </div>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar">
+        <div><button class="mobile-menu" id="mobile-menu" aria-label="فتح القائمة">☰</button><p class="breadcrumb">ctrl. / <span id="breadcrumb">لوحة التحكم</span></p><h1 id="page-title">لوحة التحكم</h1></div>
+        <div class="top-actions"><span class="status-dot">النظام متصل</span><span class="branch-chip" data-branch-name>فرع مدينة نصر</span><button class="icon-btn" id="theme-toggle" aria-label="تبديل المظهر">☾</button></div>
+      </header>
+      <main id="app-content" class="content" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script src="config.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script type="module" src="sidebar.js?v=20260719-production-only"></script>
+</body>
+</html>
