@@ -31,3 +31,19 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+
+      - name: Configure GitHub Pages mirror access
+        shell: bash
+        env:
+          PAGES_DEPLOY_KEY: ${{ secrets.PAGES_DEPLOY_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PAGES_DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Publish the always-available GitHub Pages mirror
+        shell: bash
+        run: |
+          git remote add pages git@github.com:Zikoxmohamedz/ctrl-clinic-reception-live.git
+          git push --force pages HEAD:main
