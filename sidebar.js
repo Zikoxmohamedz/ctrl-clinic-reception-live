@@ -2,7 +2,7 @@ import './theme.js';
 import { supabase } from './supabase.js';
 import { renderConsumption } from './pages/consumption.js?v=20260719-history-choice';
 import { renderAdditions } from './pages/additions.js?v=20260719-history-choice';
-import { renderReports } from './pages/reports.js?v=20260719-records-access';
+import { renderReports } from './pages/reports.js?v=20260719-material-autocomplete';
 import { renderRecords } from './pages/records.js?v=20260719-split-search';
 import { renderSettings } from './pages/settings.js?v=20260719-history-choice';
 import { list, hydrate } from './data.js';

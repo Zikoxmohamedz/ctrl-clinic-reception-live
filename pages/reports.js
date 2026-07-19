@@ -19,14 +19,99 @@ export async function renderReports(root, profile) {
     <div class="field"><label>من تاريخ<input name="from" type="date" value="${from.toLocaleDateString('en-CA')}" required></label></div>
     <div class="field"><label>إلى تاريخ<input name="to" type="date" value="${today()}" required></label></div>
     ${branches.length > 1 ? `<div class="field"><label>الفرع<select name="branch"><option value="">كل الفروع المسموحة</option>${branches.map(branch => `<option value="${branch.id}">${escapeHtml(branch.name)}</option>`).join('')}</select></label></div>` : ''}
-    <div class="field"><label>الصنف<select name="material"><option value="">كل الأصناف</option>${materials.map(material => `<option value="${material.id}">${escapeHtml(material.name)}</option>`).join('')}</select></label></div>
+    <div class="field search-wrap report-material-picker"><label>الصنف<input type="search" name="material_search" autocomplete="off" placeholder="اكتب أول حروف اسم الصنف"></label><input type="hidden" name="material"><div class="autocomplete" data-material-results hidden></div></div>
     <button class="btn primary" type="submit">عرض التقرير</button>
   </form></div></section><div id="reports-output"></div>`;
+  const resolveMaterialSelection = setupMaterialAutocomplete(root.querySelector('#report-filters'), materials);
   root.querySelector('form').onsubmit = event => {
     event.preventDefault();
+    if (!resolveMaterialSelection()) return;
     loadReport(profile, branches, new FormData(event.currentTarget));
   };
   await loadReport(profile, branches, new FormData(root.querySelector('form')));
+}
+
+function setupMaterialAutocomplete(form, materials) {
+  const input = form.elements.material_search;
+  const selectedId = form.elements.material;
+  const results = form.querySelector('[data-material-results]');
+  let matches = [];
+
+  const close = () => {
+    results.hidden = true;
+    results.innerHTML = '';
+  };
+
+  const choose = material => {
+    input.value = material.name;
+    selectedId.value = material.id;
+    close();
+  };
+
+  const showMatches = () => {
+    const query = normalizeMaterialSearch(input.value);
+    selectedId.value = '';
+    if (!query) return close();
+
+    matches = materials
+      .map(material => {
+        const name = normalizeMaterialSearch(material.name);
+        const code = normalizeMaterialSearch(material.code);
+        const words = name.split(/\s+/);
+        const score = name.startsWith(query) ? 0 : words.some(word => word.startsWith(query)) ? 1 : name.includes(query) ? 2 : code.startsWith(query) ? 3 : code.includes(query) ? 4 : 99;
+        return { material, score };
+      })
+      .filter(item => item.score < 99)
+      .sort((a, b) => a.score - b.score || String(a.material.name).localeCompare(String(b.material.name), 'ar'))
+      .slice(0, 8)
+      .map(item => item.material);
+
+    results.innerHTML = matches.length
+      ? matches.map(material => `<button type="button" data-material-id="${material.id}"><span><b>${escapeHtml(material.name)}</b><small class="row-sub">${escapeHtml(material.category || 'بدون فئة')}</small></span><small>${escapeHtml(material.code || '')} · ${escapeHtml(material.unit || '')}</small></button>`).join('')
+      : '<div class="empty-state compact-empty"><b>—</b>لا يوجد صنف مطابق</div>';
+    results.hidden = false;
+    results.querySelectorAll('[data-material-id]').forEach(button => {
+      button.onmousedown = event => event.preventDefault();
+      button.onclick = () => choose(matches.find(material => material.id === button.dataset.materialId));
+    });
+  };
+
+  input.oninput = showMatches;
+  input.onfocus = () => input.value.trim() && showMatches();
+  input.onkeydown = event => {
+    if (event.key === 'Enter' && !results.hidden && matches.length) {
+      event.preventDefault();
+      choose(matches[0]);
+    }
+    if (event.key === 'Escape') close();
+  };
+  input.onblur = () => setTimeout(close, 120);
+  return () => {
+    if (!input.value.trim()) {
+      selectedId.value = '';
+      return true;
+    }
+    if (selectedId.value) return true;
+    if (matches.length) {
+      choose(matches[0]);
+      return true;
+    }
+    toast('اختر صنفًا من نتائج البحث أو امسح خانة الصنف', 'warning');
+    input.focus();
+    return false;
+  };
+}
+
+function normalizeMaterialSearch(value) {
+  return String(value || '')
+    .toLocaleLowerCase('ar')
+    .normalize('NFD')
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
 
 async function loadReport(profile, branches, formData) {
