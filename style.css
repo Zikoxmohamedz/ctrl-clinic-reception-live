@@ -2048,3 +2048,102 @@ a {
   .audit-detail-row > div { grid-template-columns: 1fr; }
   .audit-detail-row i { transform: rotate(-90deg); text-align: center; }
 }
+
+@media (max-width: 760px) {
+  .consumption-items-wrap {
+    overflow: visible;
+    border-radius: 0;
+  }
+  .consumption-items-table {
+    min-width: 0;
+    white-space: normal;
+  }
+  .consumption-items-table thead {
+    display: none;
+  }
+  .consumption-items-table,
+  .consumption-items-table tbody {
+    display: block;
+    width: 100%;
+  }
+  .consumption-items-table tbody {
+    display: grid;
+    gap: 12px;
+  }
+  .consumption-items-table tbody tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--panel);
+    box-shadow: var(--shadow-sm);
+  }
+  .consumption-items-table tbody tr:hover {
+    background: var(--panel);
+  }
+  .consumption-items-table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+  .consumption-items-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: .72rem;
+    font-weight: 800;
+  }
+  .consumption-items-table .item-material {
+    grid-column: 1 / -1;
+    min-height: 44px;
+    padding-inline-end: 46px;
+  }
+  .consumption-items-table .item-material .row-title {
+    display: block;
+    overflow-wrap: anywhere;
+    font-size: .92rem;
+    line-height: 1.6;
+  }
+  .consumption-items-table .item-unit {
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--bg);
+    font-weight: 700;
+  }
+  .consumption-items-table .item-price {
+    grid-column: 1 / -1;
+  }
+  .consumption-items-table .table-input {
+    width: 100%;
+    min-width: 0;
+    height: 46px;
+    text-align: center;
+  }
+  .consumption-items-table .item-remove {
+    position: absolute;
+    inset-block-start: 12px;
+    inset-inline-end: 12px;
+  }
+  .consumption-items-table .item-remove .delete-icon {
+    width: 36px;
+    height: 36px;
+  }
+  #consumption-form .form-actions {
+    display: grid;
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+    gap: 10px;
+  }
+  #consumption-form .form-actions .btn {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 10px;
+    white-space: normal;
+  }
+}
