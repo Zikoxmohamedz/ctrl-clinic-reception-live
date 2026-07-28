@@ -4,6 +4,7 @@ import { renderConsumption } from './pages/consumption.js?v=20260728-draft';
 import { renderAdditions } from './pages/additions.js?v=20260719-history-choice';
 import { renderReports } from './pages/reports.js?v=20260728-styled-excel';
 import { renderRecords } from './pages/records.js?v=20260728-date-range';
+import { renderAuditLogs } from './pages/audit-logs.js?v=20260728-audit';
 import { renderSettings } from './pages/settings.js?v=20260719-history-choice';
 import { list, hydrate } from './data.js';
 
@@ -25,22 +26,22 @@ async function refreshCurrentAccess() {
   if (!supabase) return;
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('branch_id').eq('user_id', profile.id),
-    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_reports,can_records,can_edit_records,can_delete_records,can_settings').eq('user_id', profile.id).single(),
+    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings').eq('user_id', profile.id).single(),
   ]);
   if (!branchesResult.error && branchesResult.data.length) profile.branch_ids = branchesResult.data.map(row => row.branch_id);
   if (!permissionsResult.error) {
     const row = permissionsResult.data;
-    profile.permissions = { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings };
+    profile.permissions = { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, audit_logs: row.can_audit_logs, settings: row.can_settings };
   }
   sessionStorage.setItem('ctrl_profile', JSON.stringify(profile));
 }
 
 await refreshCurrentAccess();
 
-const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
+const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
 const content = document.getElementById('app-content');
 const sidebar = document.getElementById('sidebar');
-const permissions = profile.permissions || { home: true, consumption: true, additions: true, reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', settings: profile.role === 'admin' };
+const permissions = profile.permissions || { home: true, consumption: true, additions: true, reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', audit_logs: profile.role === 'admin', settings: profile.role === 'admin' };
 
 document.querySelectorAll('[data-user-name]').forEach(item => item.textContent = profile?.full_name || '');
 document.querySelectorAll('[data-branch-name]').forEach(item => item.textContent = profile?.branch_name || '');
@@ -126,6 +127,7 @@ async function route() {
     if (name === 'additions') await renderAdditions(content, profile);
     if (name === 'reports') await renderReports(content, profile);
     if (name === 'records') await renderRecords(content, profile);
+    if (name === 'audit_logs') await renderAuditLogs(content, profile);
     if (name === 'settings') await renderSettings(content, profile);
     content.focus();
   } catch (error) {

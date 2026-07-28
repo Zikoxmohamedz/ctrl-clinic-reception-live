@@ -1,7 +1,7 @@
 import { escapeHtml, toast, confirmDialog, supabase } from '../supabase.js';
 import { list, insert, remove } from '../data.js';
 
-const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
+const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
 const actionLabels = { edit_records: 'تعديل السجلات', delete_records: 'حذف السجلات' };
 const accessLabels = { ...pageLabels, ...actionLabels };
 
@@ -46,7 +46,7 @@ async function usersTab(box) {
       <div class="field"><label>كلمة المرور<input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 أحرف على الأقل" required></label></div>
       <div class="field"><label>المسمى الوظيفي<select name="role"><option value="receptionist">موظف استقبال</option><option value="admin">مدير</option></select></label></div>
       <div class="field span-2"><label>الفروع المسموحة <em>*</em></label><div class="check-grid branch-checks">${branches.map((branch, index) => checkCard('branch_ids', branch.id, branch.name, index === 0)).join('')}</div></div>
-      <div class="field span-2"><label>الصفحات الظاهرة <em>*</em></label><div class="check-grid permission-checks">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !['records', 'settings'].includes(key))).join('')}</div></div>
+      <div class="field span-2"><label>الصفحات الظاهرة <em>*</em></label><div class="check-grid permission-checks">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !['records', 'audit_logs', 'settings'].includes(key))).join('')}</div></div>
       <div class="field span-2"><label>صلاحيات إجراءات السجلات</label><div class="check-grid permission-checks">${Object.entries(actionLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, false)).join('')}</div></div>
       <button class="btn primary">إضافة الموظف</button>
     </form>
@@ -107,19 +107,19 @@ function checkCard(name, value, label, checked) {
 
 function defaultPermissions(role) {
   const admin = role === 'admin';
-  return { home: true, consumption: true, additions: true, reports: true, records: admin, edit_records: admin, delete_records: admin, settings: admin };
+  return { home: true, consumption: true, additions: true, reports: true, records: admin, edit_records: admin, delete_records: admin, audit_logs: admin, settings: admin };
 }
 
 async function getAccessData(users) {
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('user_id,branch_id'),
-    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_reports,can_records,can_edit_records,can_delete_records,can_settings'),
+    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings'),
   ]);
   if (branchesResult.error) throw branchesResult.error;
   if (permissionsResult.error) throw permissionsResult.error;
   const branches = {};
   branchesResult.data.forEach(row => (branches[row.user_id] ??= []).push(row.branch_id));
-  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings }]));
+  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, audit_logs: row.can_audit_logs, settings: row.can_settings }]));
   return { branches, permissions };
 }
 
@@ -130,7 +130,7 @@ async function saveAccess(userId, branchIds, permissions) {
   if (branchError) throw branchError;
   const { error: profileError } = await supabase.from('users').update({ branch_id: branchIds[0] }).eq('id', userId);
   if (profileError) throw profileError;
-  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_settings: permissions.settings, updated_at: new Date().toISOString() });
+  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_audit_logs: permissions.audit_logs, can_settings: permissions.settings, updated_at: new Date().toISOString() });
   if (permissionError) throw permissionError;
   const current = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
   if (current?.id === userId) {
