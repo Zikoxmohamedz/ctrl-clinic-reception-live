@@ -5,6 +5,7 @@ import { openTemporaryMaterial } from './temp-material.js';
 export async function renderConsumption(root, profile) {
   const branches = await list('branches');
   let items = [];
+  const draftKey = `ctrl_consumption_draft_v1:${profile.id}:${profile.branch_id}`;
   root.innerHTML = `<div class="page-intro"><div><h2>صرف المواد</h2><p>سجّل المواد المستخدمة للعميلة أو المحوّلة إلى فرع آخر.</p></div><button class="btn gold" id="temp-material">＋ إضافة صنف مؤقت</button></div>
   <form class="panel" id="consumption-form">
     <div class="panel-head"><div><h3>بيانات العملية</h3><p>في صرف العميلة يكفي كتابة الاسم أو الكود، وليس الاثنين.</p></div></div>
@@ -27,10 +28,56 @@ export async function renderConsumption(root, profile) {
   const search = root.querySelector('#material-search');
   const results = root.querySelector('#material-results');
   const tbody = root.querySelector('#items-body');
+  const transferField = root.querySelector('#transfer-field');
+
+  function persistDraft() {
+    const draft = {
+      date: form.date.value,
+      client_name: form.client_name.value,
+      client_code: form.client_code.value,
+      record_type: form.record_type.value,
+      transfer_to: form.transfer_to.value,
+      items: items.map(material => ({
+        id: material.id,
+        name: material.name,
+        code: material.code,
+        unit: material.unit,
+        category: material.category,
+        default_price: material.default_price,
+        is_temp: material.is_temp,
+        draft_quantity: material.draft_quantity ?? '1',
+        draft_price: material.draft_price ?? String(Number(material.default_price || 0)),
+      })),
+    };
+    localStorage.setItem(draftKey, JSON.stringify(draft));
+  }
+
+  function clearDraft() {
+    localStorage.removeItem(draftKey);
+  }
+
+  function restoreDraft() {
+    try {
+      const draft = JSON.parse(localStorage.getItem(draftKey) || 'null');
+      if (!draft || !Array.isArray(draft.items)) return;
+      form.date.value = draft.date || today();
+      form.client_name.value = draft.client_name || '';
+      form.client_code.value = draft.client_code || '';
+      const type = draft.record_type === 'transfer' ? 'transfer' : 'client';
+      form.querySelector(`[name="record_type"][value="${type}"]`).checked = true;
+      form.transfer_to.value = draft.transfer_to || '';
+      transferField.hidden = type !== 'transfer';
+      items = draft.items.filter(material => material?.id && material?.name && material?.unit);
+    } catch {
+      clearDraft();
+    }
+  }
+
   const saveTemporary = async material => {
     const [saved] = await insert('materials', { ...material, created_by: profile.id });
-    items.push(saved);
+    items.push({ ...saved, draft_quantity: '1', draft_price: String(Number(saved.default_price || 0)) });
     renderItems();
+    persistDraft();
     search.value = '';
     results.hidden = true;
     toast('تمت إضافة الصنف المؤقت إلى العملية');
@@ -38,7 +85,7 @@ export async function renderConsumption(root, profile) {
 
   form.record_type.forEach(radio => radio.onchange = () => {
     const transfer = radio.value === 'transfer' && radio.checked;
-    root.querySelector('#transfer-field').hidden = !transfer;
+    transferField.hidden = !transfer;
     if (transfer) {
       form.client_name.value = 'تحويل للفرع';
       form.client_code.value = `TR-${Date.now().toString().slice(-5)}`;
@@ -47,14 +94,24 @@ export async function renderConsumption(root, profile) {
       form.client_code.value = '';
       form.transfer_to.value = '';
     }
+    persistDraft();
   });
 
   function renderItems() {
-    tbody.innerHTML = items.map((material, index) => `<tr><td><span class="row-title">${escapeHtml(material.name)}</span><small class="row-sub">${escapeHtml(material.code)}</small></td><td>${escapeHtml(material.unit)}</td><td><input class="table-input" type="number" min="0.01" step="any" data-q="${index}" value="${material.quantity || 1}" required></td><td><input class="table-input" type="number" min="0" step="any" data-p="${index}" value="${Number(material.default_price || 0)}" placeholder="0"></td><td><button type="button" class="delete-icon" data-remove="${index}">×</button></td></tr>`).join('');
+    tbody.innerHTML = items.map((material, index) => `<tr><td><span class="row-title">${escapeHtml(material.name)}</span><small class="row-sub">${escapeHtml(material.code)}</small></td><td>${escapeHtml(material.unit)}</td><td><input class="table-input" type="number" min="0.01" step="any" data-q="${index}" value="${escapeHtml(material.draft_quantity ?? '1')}" required></td><td><input class="table-input" type="number" min="0" step="any" data-p="${index}" value="${escapeHtml(material.draft_price ?? String(Number(material.default_price || 0)))}" placeholder="0"></td><td><button type="button" class="delete-icon" data-remove="${index}">×</button></td></tr>`).join('');
     root.querySelector('#items-empty').hidden = items.length > 0;
+    tbody.querySelectorAll('[data-q]').forEach(input => input.oninput = () => {
+      items[Number(input.dataset.q)].draft_quantity = input.value;
+      persistDraft();
+    });
+    tbody.querySelectorAll('[data-p]').forEach(input => input.oninput = () => {
+      items[Number(input.dataset.p)].draft_price = input.value;
+      persistDraft();
+    });
     tbody.querySelectorAll('[data-remove]').forEach(button => button.onclick = () => {
       items.splice(Number(button.dataset.remove), 1);
       renderItems();
+      persistDraft();
     });
   }
 
@@ -70,8 +127,11 @@ export async function renderConsumption(root, profile) {
       results.querySelectorAll('button').forEach(button => button.onclick = () => {
         if (button.hasAttribute('data-create-temp')) return openTemporaryMaterial(query, saveTemporary);
         const material = found.find(item => item.id === button.dataset.id);
-        if (!items.some(item => item.id === material.id)) items.push(material);
+        if (!items.some(item => item.id === material.id)) {
+          items.push({ ...material, draft_quantity: '1', draft_price: String(Number(material.default_price || 0)) });
+        }
         renderItems();
+        persistDraft();
         search.value = '';
         results.hidden = true;
       });
@@ -80,12 +140,23 @@ export async function renderConsumption(root, profile) {
 
   root.querySelector('#temp-material').onclick = () => openTemporaryMaterial('', saveTemporary);
 
+  form.addEventListener('input', event => {
+    if (event.target !== search && !event.target.matches('[data-q], [data-p]')) persistDraft();
+  });
+  form.addEventListener('change', event => {
+    if (!event.target.matches('[name="record_type"]')) persistDraft();
+  });
+
   form.onreset = () => setTimeout(() => {
     items = [];
     renderItems();
     form.date.value = today();
-    root.querySelector('#transfer-field').hidden = true;
+    transferField.hidden = true;
+    clearDraft();
   }, 0);
+
+  restoreDraft();
+  renderItems();
 
   form.onsubmit = async event => {
     event.preventDefault();
@@ -116,6 +187,7 @@ export async function renderConsumption(root, profile) {
       await insert('consumption', payload);
       toast(`تم تسجيل ${payload.length} مادة بنجاح`);
       const keptDate = form.date.value;
+      clearDraft();
       form.reset();
       form.date.value = keptDate;
       items = [];
