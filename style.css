@@ -946,6 +946,61 @@ a {
   gap: 12px;
   align-items: end;
 }
+.report-filters {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.report-filter-panel {
+  border: 0;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.07);
+}
+.all-reports-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 4px 0 16px;
+  padding: 13px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--gold-soft) 58%, var(--panel));
+}
+.all-reports-toolbar strong,
+.all-reports-toolbar span {
+  display: block;
+}
+.all-reports-toolbar strong {
+  font-size: 0.88rem;
+}
+.all-reports-toolbar span {
+  color: var(--muted);
+  font-size: 0.69rem;
+  margin-top: 2px;
+}
+.report-section {
+  overflow: hidden;
+  border: 0;
+  box-shadow: 0 10px 32px rgba(15, 23, 42, 0.06);
+}
+.report-section .panel-head {
+  padding: 15px 18px;
+  background: color-mix(in srgb, var(--bg) 45%, var(--panel));
+}
+.report-section .panel-head.gold-line {
+  border-right: 4px solid var(--gold);
+  box-shadow: none;
+}
+.report-section .panel-head h3 {
+  font-size: 0.92rem;
+}
+.report-section .panel-body {
+  padding: 16px;
+}
+.report-section .data-table th {
+  padding-block: 10px;
+}
+.report-section .data-table td {
+  padding-block: 11px;
+}
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -979,6 +1034,12 @@ a {
   display: flex;
   gap: 7px;
   flex-wrap: wrap;
+}
+.report-actions .btn.mini {
+  min-height: 32px;
+  padding: 0.42rem 0.72rem;
+  border-radius: 9px;
+  font-size: 0.66rem;
 }
 .tabs {
   display: flex;
@@ -1604,6 +1665,9 @@ a {
   }
 }
 @media (max-width: 1250px) {
+  .report-filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .records-filters {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -1751,6 +1815,19 @@ a {
   }
 }
 @media (max-width: 760px) {
+  .all-reports-toolbar,
+  .report-section .panel-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .all-reports-toolbar .report-actions,
+  .report-section .report-actions {
+    width: 100%;
+  }
+  .all-reports-toolbar .btn,
+  .report-section .report-actions .btn {
+    flex: 1;
+  }
   .content {
     padding: 18px 12px 42px;
   }

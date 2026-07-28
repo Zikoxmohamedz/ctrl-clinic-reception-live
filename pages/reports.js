@@ -15,10 +15,11 @@ export async function renderReports(root, profile) {
   const from = new Date();
   from.setDate(1);
   root.innerHTML = `<div class="page-intro"><div><h2>التقارير</h2><p>تحليل تفصيلي لحركة المواد والإيرادات بين الفروع.</p></div></div>
-  <section class="panel"><div class="panel-body"><form class="filters" id="report-filters">
+  <section class="panel report-filter-panel"><div class="panel-body"><form class="filters report-filters" id="report-filters">
     <div class="field"><label>من تاريخ<input name="from" type="date" value="${from.toLocaleDateString('en-CA')}" required></label></div>
     <div class="field"><label>إلى تاريخ<input name="to" type="date" value="${today()}" required></label></div>
     ${branches.length > 1 ? `<div class="field"><label>الفرع<select name="branch"><option value="">كل الفروع المسموحة</option>${branches.map(branch => `<option value="${branch.id}">${escapeHtml(branch.name)}</option>`).join('')}</select></label></div>` : ''}
+    <div class="field"><label>نوع التقرير<select name="report_view"><option value="all">كل التقارير</option><option value="detailed">تقرير الصرف المفصل</option><option value="summary">ملخص الاستهلاك لكل فرع</option><option value="additions">تقرير الإضافات المفصل</option><option value="additions-summary">ملخص الإضافات لكل فرع</option><option value="balance">الرصيد التقديري</option></select></label></div>
     <div class="field search-wrap report-material-picker"><label>الصنف<input type="search" name="material_search" autocomplete="off" placeholder="اكتب أول حروف اسم الصنف"></label><input type="hidden" name="material"><div class="autocomplete" data-material-results hidden></div></div>
     <button class="btn primary" type="submit">عرض التقرير</button>
   </form></div></section><div id="reports-output"></div>`;
@@ -122,6 +123,7 @@ async function loadReport(profile, branches, formData) {
   const allowedBranchIds = new Set(branches.map(item => item.id));
   const branch = branches.length > 1 ? formData.get('branch') : branches[0]?.id;
   const material = formData.get('material');
+  const reportView = formData.get('report_view') || 'all';
   let consumption = hydrate(await list('consumption'));
   let additions = hydrate(await list('additions'));
   const matches = row => allowedBranchIds.has(row.branch_id) && row.date >= from && row.date <= to && (!branch || row.branch_id === branch) && (!material || row.material_id === material);
@@ -131,7 +133,7 @@ async function loadReport(profile, branches, formData) {
   const additionsSummary = groupSummary(additions, branches);
   if (!branch && summary.length > 1) summary.push(overallSummary(summary));
   if (!branch && additionsSummary.length > 1) additionsSummary.push(overallSummary(additionsSummary));
-  reportState = { consumption, additions, summary, additionsSummary, balance: makeBalance(consumption, additions), profile, from, to, branch, branches };
+  reportState = { consumption, additions, summary, additionsSummary, balance: makeBalance(consumption, additions), profile, from, to, branch, branches, reportView };
   pageState = { detailed: 1, additions: 1, balance: 1 };
   summary.forEach(group => pageState[`summary:${group.key}`] = 1);
   additionsSummary.forEach(group => pageState[`additions-summary:${group.key}`] = 1);
@@ -140,7 +142,17 @@ async function loadReport(profile, branches, formData) {
 
 function renderOutput(focusTarget) {
   const output = reportRoot.querySelector('#reports-output');
-  output.innerHTML = `${renderDetailedSection()}${renderSummarySection()}${renderAdditionsSection()}${renderAdditionsSummarySection()}${renderBalanceSection()}`;
+  const sections = {
+    detailed: renderDetailedSection,
+    summary: renderSummarySection,
+    additions: renderAdditionsSection,
+    'additions-summary': renderAdditionsSummarySection,
+    balance: renderBalanceSection,
+  };
+  const selected = reportState.reportView;
+  output.innerHTML = selected === 'all'
+    ? `${renderAllReportsToolbar()}${Object.values(sections).map(render => render()).join('')}`
+    : (sections[selected] || sections.detailed)();
   output.querySelectorAll('[data-export]').forEach(button => button.onclick = () => exportExcel(button.dataset.export));
   output.querySelectorAll('[data-csv]').forEach(button => button.onclick = () => exportCsv(button.dataset.csv));
   output.querySelectorAll('[data-print]').forEach(button => button.onclick = () => printReport(button.dataset.print));
@@ -151,6 +163,13 @@ function renderOutput(focusTarget) {
   if (focusTarget) requestAnimationFrame(() => document.getElementById(focusTarget)?.scrollIntoView({ block: 'nearest' }));
 }
 
+function renderAllReportsToolbar() {
+  const branchName = reportState.branch
+    ? reportState.branches.find(branch => branch.id === reportState.branch)?.name
+    : 'كل الفروع المسموحة';
+  return `<div class="all-reports-toolbar"><div><strong>كل التقارير</strong><span>${escapeHtml(branchName || '')} · من ${reportState.from} إلى ${reportState.to}</span></div>${actions('all')}</div>`;
+}
+
 function renderDetailedSection() {
   const rows = reportState.consumption;
   const page = validPage(pageState.detailed, rows.length);
@@ -158,11 +177,11 @@ function renderDetailedSection() {
   const visible = pageSlice(rows, page);
   const totalQuantity = rows.reduce((sum, row) => sum + Number(row.quantity), 0);
   const totalRevenue = rows.reduce((sum, row) => sum + Number(row.quantity) * Number(row.selling_price || 0), 0);
-  return `<section class="panel" id="report-detailed"><div class="panel-head gold-line"><div><h3>تقرير مفصل للصرف</h3><p>${rows.length} سجل مطابق للفلاتر</p></div>${actions('detailed')}</div><div class="table-wrap">${rows.length ? `<table class="data-table"><thead><tr><th>#</th><th>التاريخ</th><th>الفرع</th><th>العميلة</th><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>النوع</th><th>بواسطة</th></tr></thead><tbody>${visible.map((row, index) => `<tr><td>${(page - 1) * PAGE_SIZE + index + 1}</td><td>${row.date}</td><td>${escapeHtml(row.branches?.name)}</td><td><span class="row-title">${escapeHtml(row.client_name)}</span><small class="row-sub">${escapeHtml(row.client_code)}</small></td><td><span class="row-title">${escapeHtml(row.materials?.name)}</span><small class="row-sub">${escapeHtml(row.materials?.code)}</small></td><td>${escapeHtml(row.unit)}</td><td>${row.quantity}</td><td>${money(row.selling_price)}</td><td><b>${money(row.quantity * row.selling_price)}</b></td><td><span class="badge ${row.record_type}">${row.record_type === 'client' ? 'عميلة' : 'تحويل'}</span></td><td>${escapeHtml(row.users?.full_name || '—')}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="6">إجمالي كل النتائج</td><td>${money(totalQuantity)}</td><td></td><td>${money(totalRevenue)} ج.م</td><td colspan="2"></td></tr></tfoot></table>` : empty('لا توجد بيانات مطابقة')}</div>${pagination('detailed', rows.length, page, 'report-detailed')}</section>`;
+  return `<section class="panel report-section" id="report-detailed"><div class="panel-head gold-line"><div><h3>تقرير مفصل للصرف</h3><p>${rows.length} سجل مطابق للفلاتر</p></div>${actions('detailed')}</div><div class="table-wrap">${rows.length ? `<table class="data-table"><thead><tr><th>#</th><th>التاريخ</th><th>الفرع</th><th>العميلة</th><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>النوع</th><th>بواسطة</th></tr></thead><tbody>${visible.map((row, index) => `<tr><td>${(page - 1) * PAGE_SIZE + index + 1}</td><td>${row.date}</td><td>${escapeHtml(row.branches?.name)}</td><td><span class="row-title">${escapeHtml(row.client_name)}</span><small class="row-sub">${escapeHtml(row.client_code)}</small></td><td><span class="row-title">${escapeHtml(row.materials?.name)}</span><small class="row-sub">${escapeHtml(row.materials?.code)}</small></td><td>${escapeHtml(row.unit)}</td><td>${row.quantity}</td><td>${money(row.selling_price)}</td><td><b>${money(row.quantity * row.selling_price)}</b></td><td><span class="badge ${row.record_type}">${row.record_type === 'client' ? 'عميلة' : 'تحويل'}</span></td><td>${escapeHtml(row.users?.full_name || '—')}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="6">إجمالي كل النتائج</td><td>${money(totalQuantity)}</td><td></td><td>${money(totalRevenue)} ج.م</td><td colspan="2"></td></tr></tfoot></table>` : empty('لا توجد بيانات مطابقة')}</div>${pagination('detailed', rows.length, page, 'report-detailed')}</section>`;
 }
 
 function renderSummarySection() {
-  return `<section class="panel" id="report-summary"><div class="panel-head gold-line"><div><h3>ملخص الاستهلاك لكل فرع</h3><p>كل كارت يعرض 20 صنفاً في الصفحة</p></div>${actions('summary')}</div><div class="panel-body"><div class="summary-grid">${renderSummaryCards(reportState.summary)}</div></div></section>`;
+  return `<section class="panel report-section" id="report-summary"><div class="panel-head gold-line"><div><h3>ملخص الاستهلاك لكل فرع</h3><p>كل كارت يعرض 20 صنفاً في الصفحة</p></div>${actions('summary')}</div><div class="panel-body"><div class="summary-grid">${renderSummaryCards(reportState.summary)}</div></div></section>`;
 }
 
 function renderSummaryCards(groups) {
@@ -181,11 +200,11 @@ function renderAdditionsSection() {
   const rows = reportState.additions;
   const page = validPage(pageState.additions, rows.length);
   pageState.additions = page;
-  return `<section class="panel" id="report-additions"><div class="panel-head gold-line"><div><h3>تقرير الإضافات</h3><p>${rows.length} حركة إضافة</p></div>${actions('additions')}</div><div class="table-wrap">${renderAdditionsTable(pageSlice(rows, page))}</div>${pagination('additions', rows.length, page, 'report-additions')}</section>`;
+  return `<section class="panel report-section" id="report-additions"><div class="panel-head gold-line"><div><h3>تقرير الإضافات</h3><p>${rows.length} حركة إضافة</p></div>${actions('additions')}</div><div class="table-wrap">${renderAdditionsTable(pageSlice(rows, page))}</div>${pagination('additions', rows.length, page, 'report-additions')}</section>`;
 }
 
 function renderAdditionsSummarySection() {
-  return `<section class="panel" id="report-additions-summary"><div class="panel-head gold-line"><div><h3>ملخص الإضافات لكل فرع</h3><p>إجمالي الكمية المضافة لكل صنف خلال الفترة المحددة</p></div>${actions('additions-summary')}</div><div class="panel-body"><div class="summary-grid">${renderAdditionsSummaryCards(reportState.additionsSummary)}</div></div></section>`;
+  return `<section class="panel report-section" id="report-additions-summary"><div class="panel-head gold-line"><div><h3>ملخص الإضافات لكل فرع</h3><p>إجمالي الكمية المضافة لكل صنف خلال الفترة المحددة</p></div>${actions('additions-summary')}</div><div class="panel-body"><div class="summary-grid">${renderAdditionsSummaryCards(reportState.additionsSummary)}</div></div></section>`;
 }
 
 function renderAdditionsSummaryCards(groups) {
@@ -205,7 +224,7 @@ function renderBalanceSection() {
   const rows = reportState.balance;
   const page = validPage(pageState.balance, rows.length);
   pageState.balance = page;
-  return `<section class="panel" id="report-balance"><div class="panel-head gold-line"><div><h3>الرصيد التقديري</h3><p>إجمالي المضاف ناقص إجمالي المصروف</p></div>${actions('balance')}</div><div class="table-wrap">${renderBalanceTable(pageSlice(rows, page))}</div>${pagination('balance', rows.length, page, 'report-balance')}</section>`;
+  return `<section class="panel report-section" id="report-balance"><div class="panel-head gold-line"><div><h3>الرصيد التقديري</h3><p>إجمالي المضاف ناقص إجمالي المصروف</p></div>${actions('balance')}</div><div class="table-wrap">${renderBalanceTable(pageSlice(rows, page))}</div>${pagination('balance', rows.length, page, 'report-balance')}</section>`;
 }
 
 function pagination(key, total, page, target, compact = false) {
@@ -219,7 +238,10 @@ function pagination(key, total, page, target, compact = false) {
 function validPage(page = 1, total) { return Math.min(Math.max(1, page), Math.max(1, Math.ceil(total / PAGE_SIZE))); }
 function pageSlice(rows, page) { return rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE); }
 function empty(message) { return `<div class="empty-state"><b>—</b>${message}</div>`; }
-function actions(type) { return `<div class="report-actions"><button class="btn gold" data-export="${type}">Excel شامل ↓</button><button class="btn ghost" data-csv="${type}">CSV</button><button class="btn ghost" data-print="${type}">طباعة</button></div>`; }
+function actions(type) {
+  if (type === 'all') return `<div class="report-actions"><button class="btn gold mini" data-export="all">تنزيل Excel شامل ↓</button></div>`;
+  return `<div class="report-actions"><button class="btn gold mini" data-export="${type}">Excel ↓</button><button class="btn ghost mini" data-csv="${type}">CSV</button><button class="btn ghost mini" data-print="${type}">طباعة</button></div>`;
+}
 
 function groupSummary(rows, branches) {
   const map = {};
@@ -353,10 +375,20 @@ function appendReportSheet(workbook, used, name, rows, headers, totalLabel) {
   XLSX.utils.book_append_sheet(workbook, makeSheet(rows, headers, totalLabel), safeSheetName(name, used));
 }
 
-function exportExcel() {
+function exportExcel(type = 'all') {
   if (!window.XLSX) return toast('مكتبة Excel غير متاحة', 'error');
   const workbook = XLSX.utils.book_new();
   const used = new Set();
+  if (type !== 'all') {
+    const rows = rowsFor(type);
+    if (!rows.length) return toast('لا توجد بيانات للتصدير', 'warning');
+    const headers = Object.keys(rows[0]);
+    const titles = { detailed: 'صرف_مفصل', summary: 'ملخص_الاستهلاك', additions: 'إضافات_مفصلة', 'additions-summary': 'ملخص_الإضافات', balance: 'الرصيد' };
+    appendReportSheet(workbook, used, titles[type] || 'التقرير', rows, headers, 'الإجمالي');
+    XLSX.writeFile(workbook, `ctrl_${titles[type] || 'report'}_${reportState.from}_${reportState.to}.xlsx`);
+    toast('تم تجهيز ملف Excel للتقرير المحدد');
+    return;
+  }
   const branches = scopedBranches();
   appendReportSheet(workbook, used, 'مجمع_تفصيلي', movementRows(), MOVEMENT_HEADERS, 'إجمالي كل الحركات');
   appendReportSheet(workbook, used, 'مجمع_كامل', fullSummaryRows(), FULL_SUMMARY_HEADERS, 'الإجمالي العام');
