@@ -114,7 +114,7 @@ function openEditModal(row, branches, allBranches, materials, reload) {
     <div class="field span-2"><label>الصنف <em>*</em><select name="material_id" required>${materialOptions}</select></label></div>
     <div class="field"><label>الكمية <em>*</em><input type="number" name="quantity" min="0.01" step="any" value="${Number(row.quantity)}" required></label></div>
     ${consumption ? `<div class="field"><label>الوحدة <em>*</em><input name="unit" value="${escapeHtml(row.unit || row.materials?.unit || '')}" required></label></div><div class="field"><label>اسم العميلة <small>(الاسم أو الكود)</small><input name="client_name" value="${escapeHtml(row.client_name || '')}"></label></div><div class="field"><label>كود العميلة <small>(الاسم أو الكود)</small><input name="client_code" value="${escapeHtml(row.client_code || '')}"></label></div><div class="field"><label>سعر الوحدة<input type="number" name="selling_price" min="0" step="any" value="${Number(row.selling_price || 0)}"></label></div><div class="field"><label>نوع الحركة<select name="record_type"><option value="client" ${row.record_type === 'client' ? 'selected' : ''}>صرف لعميلة</option><option value="transfer" ${row.record_type === 'transfer' ? 'selected' : ''}>تحويل لفرع</option></select></label></div><div class="field" data-transfer-edit ${row.record_type === 'transfer' ? '' : 'hidden'}><label>الفرع المستلم<select name="transfer_to"><option value="">اختر الفرع</option>${transferOptions}</select></label></div>` : `<div class="field span-2"><label>ملاحظات<textarea name="notes">${escapeHtml(row.notes || '')}</textarea></label></div>`}
-  </div><div class="modal-actions"><button type="button" class="btn ghost modal-cancel">إلغاء</button><button class="btn primary">حفظ التعديل</button></div></form></div>`;
+  </div><div class="modal-actions"><button type="button" class="btn ghost modal-cancel">إلغاء</button><button type="submit" class="btn primary">حفظ التعديل</button></div></form></div>`;
   const form = root.querySelector('form');
   const close = () => { root.innerHTML = ''; };
   root.querySelectorAll('.modal-x,.modal-cancel').forEach(button => button.onclick = close);
@@ -134,11 +134,16 @@ function openEditModal(row, branches, allBranches, materials, reload) {
     } else payload.notes = form.notes.value.trim();
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
+    button.textContent = 'جارٍ الحفظ...';
     try {
       await update(row.movement, row.id, payload);
       toast('تم حفظ التعديل');
       close();
       await reload();
-    } catch (error) { toast(error.message, 'error'); button.disabled = false; }
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+      button.textContent = 'حفظ التعديل';
+    }
   };
 }
