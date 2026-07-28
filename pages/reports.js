@@ -348,17 +348,6 @@ function withTotals(rows, headers, label) {
   return [...rows, total];
 }
 
-function makeSheet(rows, headers, totalLabel) {
-  const data = withTotals(rows, headers, totalLabel);
-  const matrix = [headers, ...data.map(row => headers.map(header => row[header] ?? ''))];
-  const sheet = XLSX.utils.aoa_to_sheet(matrix);
-  sheet['!cols'] = headers.map(header => ({ wch: ['الصنف', 'العميلة', 'بواسطة'].includes(header) ? 28 : header === 'الفرع' ? 20 : 15 }));
-  sheet['!sheetViews'] = [{ rightToLeft: true }];
-  sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
-  sheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}${Math.max(1, matrix.length)}` };
-  return sheet;
-}
-
 function safeSheetName(raw, used) {
   const base = String(raw).replace(/[\\/\?\*\[\]:]/g, '-').trim().slice(0, 31) || 'Sheet';
   let name = base;
@@ -371,34 +360,171 @@ function safeSheetName(raw, used) {
   return name;
 }
 
-function appendReportSheet(workbook, used, name, rows, headers, totalLabel) {
-  XLSX.utils.book_append_sheet(workbook, makeSheet(rows, headers, totalLabel), safeSheetName(name, used));
+function createCtrlLogo() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 420;
+  canvas.height = 130;
+  const context = canvas.getContext('2d');
+  context.fillStyle = '#142A55';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.direction = 'ltr';
+  context.textAlign = 'left';
+  context.textBaseline = 'middle';
+  context.font = '900 84px Arial';
+  context.fillStyle = '#FFFFFF';
+  context.fillText('ctrl', 34, 68);
+  context.fillStyle = '#C9A44C';
+  context.beginPath();
+  context.arc(226, 91, 9, 0, Math.PI * 2);
+  context.fill();
+  return canvas.toDataURL('image/png');
 }
 
-function exportExcel(type = 'all') {
-  if (!window.XLSX) return toast('مكتبة Excel غير متاحة', 'error');
-  const workbook = XLSX.utils.book_new();
-  const used = new Set();
-  if (type !== 'all') {
-    const rows = rowsFor(type);
-    if (!rows.length) return toast('لا توجد بيانات للتصدير', 'warning');
-    const headers = Object.keys(rows[0]);
-    const titles = { detailed: 'صرف_مفصل', summary: 'ملخص_الاستهلاك', additions: 'إضافات_مفصلة', 'additions-summary': 'ملخص_الإضافات', balance: 'الرصيد' };
-    appendReportSheet(workbook, used, titles[type] || 'التقرير', rows, headers, 'الإجمالي');
-    XLSX.writeFile(workbook, `ctrl_${titles[type] || 'report'}_${reportState.from}_${reportState.to}.xlsx`);
-    toast('تم تجهيز ملف Excel للتقرير المحدد');
-    return;
-  }
-  const branches = scopedBranches();
-  appendReportSheet(workbook, used, 'مجمع_تفصيلي', movementRows(), MOVEMENT_HEADERS, 'إجمالي كل الحركات');
-  appendReportSheet(workbook, used, 'مجمع_كامل', fullSummaryRows(), FULL_SUMMARY_HEADERS, 'الإجمالي العام');
-  branches.forEach(branch => {
-    appendReportSheet(workbook, used, `تفصيلي_${branch.name}`, movementRows(branch.id), MOVEMENT_HEADERS, `إجمالي ${branch.name}`);
-    appendReportSheet(workbook, used, `ملخص_${branch.name}`, fullSummaryRows(branch.id), FULL_SUMMARY_HEADERS, `إجمالي ${branch.name}`);
+function appendStyledReportSheet(workbook, logoId, used, name, title, rows, headers, totalLabel, branchLabel) {
+  const sheet = workbook.addWorksheet(safeSheetName(name, used), {
+    properties: { tabColor: { argb: 'FFC9A44C' }, defaultRowHeight: 20 },
+    pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
   });
-  const scope = reportState.branch ? branches[0]?.name || 'فرع' : 'كل_الفروع';
-  XLSX.writeFile(workbook, `ctrl_تقرير_شامل_${scope}_${reportState.from}_${reportState.to}.xlsx`);
-  toast(`تم تجهيز ملف Excel شامل (${workbook.SheetNames.length} شيت)`);
+  const lastColumn = headers.length;
+  const titleStart = Math.min(3, lastColumn);
+  sheet.views = [{ rightToLeft: true, state: 'frozen', xSplit: 0, ySplit: 5, activeCell: 'A6' }];
+  sheet.mergeCells(1, 1, 3, Math.min(2, lastColumn));
+  sheet.mergeCells(1, titleStart, 1, lastColumn);
+  sheet.mergeCells(2, titleStart, 2, lastColumn);
+  sheet.mergeCells(3, titleStart, 3, lastColumn);
+  [1, 2, 3].forEach(rowNumber => {
+    const row = sheet.getRow(rowNumber);
+    row.height = rowNumber === 1 ? 32 : 24;
+    for (let column = 1; column <= lastColumn; column += 1) {
+      row.getCell(column).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF142A55' } };
+    }
+  });
+  sheet.getCell(1, titleStart).value = title;
+  sheet.getCell(1, titleStart).font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getCell(2, titleStart).value = `الفترة: ${reportState.from} إلى ${reportState.to}`;
+  sheet.getCell(3, titleStart).value = `الفرع: ${branchLabel || 'كل الفروع المسموحة'}`;
+  [2, 3].forEach(rowNumber => {
+    sheet.getCell(rowNumber, titleStart).font = { name: 'Arial', size: 10, color: { argb: 'FFD6DEEE' } };
+  });
+  [1, 2, 3].forEach(rowNumber => {
+    sheet.getCell(rowNumber, titleStart).alignment = { horizontal: 'right', vertical: 'middle', readingOrder: 'rtl' };
+  });
+  sheet.addImage(logoId, { tl: { col: 0.15, row: 0.2 }, ext: { width: 105, height: 34 }, editAs: 'oneCell' });
+  sheet.getRow(4).height = 9;
+
+  const headerRow = sheet.getRow(5);
+  headerRow.values = headers;
+  headerRow.height = 28;
+  headerRow.eachCell(cell => {
+    cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF142A55' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8D6A8' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl', wrapText: true };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FFC9A44C' } },
+      bottom: { style: 'medium', color: { argb: 'FFC9A44C' } },
+      left: { style: 'thin', color: { argb: 'FFD6DEEA' } },
+      right: { style: 'thin', color: { argb: 'FFD6DEEA' } },
+    };
+  });
+
+  rows.forEach((data, index) => {
+    const row = sheet.addRow(headers.map(header => data[header] ?? ''));
+    row.height = 23;
+    row.eachCell((cell, columnNumber) => {
+      cell.font = { name: 'Arial', size: 10, color: { argb: 'FF26364F' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: index % 2 ? 'FFF3F6FA' : 'FFFFFFFF' } };
+      cell.alignment = { horizontal: typeof cell.value === 'number' ? 'center' : 'right', vertical: 'middle', readingOrder: 'rtl', wrapText: true };
+      cell.border = {
+        bottom: { style: 'hair', color: { argb: 'FFD9E0EA' } },
+        left: { style: 'hair', color: { argb: 'FFE4E9F0' } },
+        right: { style: 'hair', color: { argb: 'FFE4E9F0' } },
+      };
+      if (typeof cell.value === 'number') cell.numFmt = '#,##0.00';
+      if (headers[columnNumber - 1] === 'الرصيد' && Number(cell.value) < 0) {
+        cell.font = { ...cell.font, bold: true, color: { argb: 'FFB42318' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFE7E5' } };
+      }
+    });
+  });
+
+  if (!rows.length) {
+    const emptyRow = sheet.addRow(['لا توجد بيانات مطابقة']);
+    sheet.mergeCells(emptyRow.number, 1, emptyRow.number, lastColumn);
+    emptyRow.height = 34;
+    emptyRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 'rtl' };
+    emptyRow.getCell(1).font = { name: 'Arial', italic: true, color: { argb: 'FF667085' } };
+  } else {
+    const totals = withTotals(rows, headers, totalLabel).at(-1);
+    const totalRow = sheet.addRow(headers.map(header => totals[header] ?? ''));
+    totalRow.height = 27;
+    totalRow.eachCell(cell => {
+      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF142A55' } };
+      cell.alignment = { horizontal: typeof cell.value === 'number' ? 'center' : 'right', vertical: 'middle', readingOrder: 'rtl' };
+      if (typeof cell.value === 'number') cell.numFmt = '#,##0.00';
+    });
+  }
+
+  headers.forEach((header, index) => {
+    const widestValue = rows.reduce((width, row) => Math.max(width, String(row[header] ?? '').length), header.length);
+    const preferred = ['الصنف', 'العميلة', 'بواسطة'].includes(header) ? 28 : header === 'الفرع' ? 20 : Math.max(12, widestValue + 3);
+    sheet.getColumn(index + 1).width = Math.min(preferred, 34);
+  });
+  sheet.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5, column: lastColumn } };
+  sheet.headerFooter.oddFooter = '&Rctrl.  |  &D&Cصفحة &P من &N';
+  sheet.pageSetup.margins = { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
+}
+
+async function saveStyledWorkbook(workbook, filename) {
+  const buffer = await workbook.xlsx.writeBuffer();
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+async function exportExcel(type = 'all') {
+  if (!window.ExcelJS) return toast('مكتبة تنسيق Excel غير متاحة', 'error');
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'ctrl.';
+  workbook.company = 'ctrl.';
+  workbook.subject = 'تقارير حركة المواد';
+  workbook.created = new Date();
+  const used = new Set();
+  const logoId = workbook.addImage({ base64: createCtrlLogo(), extension: 'png' });
+  const branches = scopedBranches();
+  const branchLabel = reportState.branch ? branches[0]?.name || 'فرع' : 'كل الفروع المسموحة';
+  const titles = {
+    detailed: ['صرف_مفصل', 'تقرير الصرف المفصل'],
+    summary: ['ملخص_الاستهلاك', 'ملخص الاستهلاك لكل فرع'],
+    additions: ['إضافات_مفصلة', 'تقرير الإضافات المفصل'],
+    'additions-summary': ['ملخص_الإضافات', 'ملخص الإضافات لكل فرع'],
+    balance: ['الرصيد', 'الرصيد التقديري'],
+  };
+  try {
+    if (type !== 'all') {
+      const rows = rowsFor(type);
+      if (!rows.length) return toast('لا توجد بيانات للتصدير', 'warning');
+      const headers = Object.keys(rows[0]);
+      appendStyledReportSheet(workbook, logoId, used, titles[type]?.[0] || 'التقرير', titles[type]?.[1] || 'تقرير ctrl.', rows, headers, 'الإجمالي', branchLabel);
+      await saveStyledWorkbook(workbook, `ctrl_${titles[type]?.[0] || 'report'}_${reportState.from}_${reportState.to}.xlsx`);
+      toast('تم تجهيز ملف Excel المنسق للتقرير المحدد');
+      return;
+    }
+    appendStyledReportSheet(workbook, logoId, used, 'مجمع_تفصيلي', 'التقرير الشامل لحركة المواد', movementRows(), MOVEMENT_HEADERS, 'إجمالي كل الحركات', branchLabel);
+    appendStyledReportSheet(workbook, logoId, used, 'مجمع_كامل', 'الملخص الشامل للمخزون والإيراد', fullSummaryRows(), FULL_SUMMARY_HEADERS, 'الإجمالي العام', branchLabel);
+    branches.forEach(branch => {
+      appendStyledReportSheet(workbook, logoId, used, `تفصيلي_${branch.name}`, `الحركات التفصيلية — ${branch.name}`, movementRows(branch.id), MOVEMENT_HEADERS, `إجمالي ${branch.name}`, branch.name);
+      appendStyledReportSheet(workbook, logoId, used, `ملخص_${branch.name}`, `ملخص الفرع — ${branch.name}`, fullSummaryRows(branch.id), FULL_SUMMARY_HEADERS, `إجمالي ${branch.name}`, branch.name);
+    });
+    const scope = reportState.branch ? branches[0]?.name || 'فرع' : 'كل_الفروع';
+    await saveStyledWorkbook(workbook, `ctrl_تقرير_شامل_${scope}_${reportState.from}_${reportState.to}.xlsx`);
+    toast(`تم تجهيز ملف Excel منسق (${workbook.worksheets.length} شيت)`);
+  } catch (error) {
+    console.error(error);
+    toast('تعذر تجهيز ملف Excel المنسق', 'error');
+  }
 }
 
 function printTable(headers, rows, rowClass = () => '') {
