@@ -23,7 +23,10 @@ export async function list(type, filters = {}) {
         : '*'
   );
   Object.entries(filters).forEach(([key, value]) => {
-    if (value !== '' && value != null) query = query.eq(key, value);
+    if (value === '' || value == null) return;
+    if (key === 'date_from') query = query.gte('date', value);
+    else if (key === 'date_to') query = query.lte('date', value);
+    else query = query.eq(key, value);
   });
   const { data, error } = await query.order('created_at', { ascending: false });
   if (error) throw error;

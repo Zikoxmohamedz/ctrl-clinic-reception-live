@@ -128,16 +128,19 @@ async function loadReport(profile, branches, formData) {
   consumption = consumption.filter(matches).sort((a, b) => a.branch_id.localeCompare(b.branch_id) || a.date.localeCompare(b.date));
   additions = additions.filter(matches).sort((a, b) => a.branch_id.localeCompare(b.branch_id) || a.date.localeCompare(b.date));
   const summary = groupSummary(consumption, branches);
+  const additionsSummary = groupSummary(additions, branches);
   if (!branch && summary.length > 1) summary.push(overallSummary(summary));
-  reportState = { consumption, additions, summary, balance: makeBalance(consumption, additions), profile, from, to, branch, branches };
+  if (!branch && additionsSummary.length > 1) additionsSummary.push(overallSummary(additionsSummary));
+  reportState = { consumption, additions, summary, additionsSummary, balance: makeBalance(consumption, additions), profile, from, to, branch, branches };
   pageState = { detailed: 1, additions: 1, balance: 1 };
   summary.forEach(group => pageState[`summary:${group.key}`] = 1);
+  additionsSummary.forEach(group => pageState[`additions-summary:${group.key}`] = 1);
   renderOutput();
 }
 
 function renderOutput(focusTarget) {
   const output = reportRoot.querySelector('#reports-output');
-  output.innerHTML = `${renderDetailedSection()}${renderSummarySection()}${renderAdditionsSection()}${renderBalanceSection()}`;
+  output.innerHTML = `${renderDetailedSection()}${renderSummarySection()}${renderAdditionsSection()}${renderAdditionsSummarySection()}${renderBalanceSection()}`;
   output.querySelectorAll('[data-export]').forEach(button => button.onclick = () => exportExcel(button.dataset.export));
   output.querySelectorAll('[data-csv]').forEach(button => button.onclick = () => exportCsv(button.dataset.csv));
   output.querySelectorAll('[data-print]').forEach(button => button.onclick = () => printReport(button.dataset.print));
@@ -179,6 +182,23 @@ function renderAdditionsSection() {
   const page = validPage(pageState.additions, rows.length);
   pageState.additions = page;
   return `<section class="panel" id="report-additions"><div class="panel-head gold-line"><div><h3>تقرير الإضافات</h3><p>${rows.length} حركة إضافة</p></div>${actions('additions')}</div><div class="table-wrap">${renderAdditionsTable(pageSlice(rows, page))}</div>${pagination('additions', rows.length, page, 'report-additions')}</section>`;
+}
+
+function renderAdditionsSummarySection() {
+  return `<section class="panel" id="report-additions-summary"><div class="panel-head gold-line"><div><h3>ملخص الإضافات لكل فرع</h3><p>إجمالي الكمية المضافة لكل صنف خلال الفترة المحددة</p></div>${actions('additions-summary')}</div><div class="panel-body"><div class="summary-grid">${renderAdditionsSummaryCards(reportState.additionsSummary)}</div></div></section>`;
+}
+
+function renderAdditionsSummaryCards(groups) {
+  if (!groups.length) return empty('لا توجد إضافات للملخص');
+  return groups.map(group => {
+    const items = Object.values(group.items);
+    const stateKey = `additions-summary:${group.key}`;
+    const page = validPage(pageState[stateKey], items.length);
+    pageState[stateKey] = page;
+    const cardId = `additions-summary-${group.key}`;
+    const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    return `<article class="summary-card" id="${cardId}"><h4>${escapeHtml(group.branch?.name)}</h4><div class="summary-card-items">${pageSlice(items, page).map(item => `<div class="summary-row"><span>${escapeHtml(item.material?.name)}</span><b>${money(item.quantity)} ${escapeHtml(item.material?.unit)}</b><span>مضاف</span></div>`).join('')}</div><div class="summary-total"><span>إجمالي الكمية المضافة</span><span>${money(totalQuantity)}</span></div>${pagination(stateKey, items.length, page, cardId, true)}</article>`;
+  }).join('');
 }
 
 function renderBalanceSection() {
@@ -247,6 +267,7 @@ function rowsFor(type) {
   if (type === 'detailed') return state.consumption.map(row => ({ 'التاريخ': row.date, 'الفرع': row.branches?.name, 'العميلة': row.client_name, 'كود العميلة': row.client_code, 'الصنف': row.materials?.name, 'كود الصنف': row.materials?.code, 'الوحدة': row.unit, 'الكمية': row.quantity, 'سعر الوحدة': row.selling_price || 0, 'الإجمالي': row.quantity * (row.selling_price || 0), 'النوع': row.record_type === 'client' ? 'عميلة' : 'تحويل', 'بواسطة': row.users?.full_name || '' }));
   if (type === 'summary') return state.summary.flatMap(group => Object.values(group.items).map(item => ({ 'الفرع': group.branch?.name, 'الصنف': item.material?.name, 'كود الصنف': item.material?.code, 'الوحدة': item.material?.unit, 'إجمالي الكمية': item.quantity, 'إجمالي الإيراد': item.revenue })));
   if (type === 'additions') return state.additions.map(row => ({ 'التاريخ': row.date, 'الفرع': row.branches?.name, 'الصنف': row.materials?.name, 'كود الصنف': row.materials?.code, 'الوحدة': row.materials?.unit, 'الكمية المضافة': row.quantity, 'بواسطة': row.users?.full_name || '' }));
+  if (type === 'additions-summary') return state.additionsSummary.flatMap(group => Object.values(group.items).map(item => ({ 'الفرع': group.branch?.name, 'الصنف': item.material?.name, 'كود الصنف': item.material?.code, 'الوحدة': item.material?.unit, 'إجمالي الكمية المضافة': item.quantity })));
   return state.balance.map(row => ({ 'الفرع': row.branch?.name, 'الصنف': row.material?.name, 'كود الصنف': row.material?.code, 'الوحدة': row.material?.unit, 'إجمالي المضاف': row.added, 'إجمالي المصروف': row.consumed, 'الرصيد': row.balance }));
 }
 
@@ -358,13 +379,15 @@ function printTable(headers, rows, rowClass = () => '') {
 function printReport(type) {
   const printWindow = window.open('', '_blank', 'width=1200,height=800');
   if (!printWindow) return toast('اسمح بفتح النوافذ المنبثقة لإتمام الطباعة', 'warning');
-  const titles = { detailed: 'تقرير مفصل للصرف', summary: 'ملخص الاستهلاك لكل فرع', additions: 'تقرير الإضافات', balance: 'الرصيد التقديري' };
+  const titles = { detailed: 'تقرير مفصل للصرف', summary: 'ملخص الاستهلاك لكل فرع', additions: 'تقرير الإضافات', 'additions-summary': 'ملخص الإضافات لكل فرع', balance: 'الرصيد التقديري' };
   const branchScope = reportState.branch ? scopedBranches()[0]?.name : 'كل الفروع المسموحة';
   let content = '';
-  if (type === 'summary') {
+  if (type === 'summary' || type === 'additions-summary') {
     content = scopedBranches().map(branch => {
-      const rows = rowsFor('summary').filter(row => row['الفرع'] === branch.name);
-      const headers = ['الفرع', 'الصنف', 'كود الصنف', 'الوحدة', 'إجمالي الكمية', 'إجمالي الإيراد'];
+      const rows = rowsFor(type).filter(row => row['الفرع'] === branch.name);
+      const headers = type === 'summary'
+        ? ['الفرع', 'الصنف', 'كود الصنف', 'الوحدة', 'إجمالي الكمية', 'إجمالي الإيراد']
+        : ['الفرع', 'الصنف', 'كود الصنف', 'الوحدة', 'إجمالي الكمية المضافة'];
       return `<section class="branch-section"><h2>${escapeHtml(branch.name)}</h2>${printTable(headers, rows)}</section>`;
     }).join('');
   } else {

@@ -1,5 +1,5 @@
 import { today, toast, escapeHtml, money, confirmDialog } from '../supabase.js';
-import { list, hydrate, update, remove } from '../data.js';
+import { list, hydrate, update, remove } from '../data.js?v=20260728-date-range';
 
 const PAGE_SIZE = 20;
 let currentPage = 1;
@@ -8,9 +8,12 @@ export async function renderRecords(root, profile) {
   const [allBranches, materials] = await Promise.all([list('branches'), list('materials')]);
   const allowedIds = profile.branch_ids?.length ? profile.branch_ids : [profile.branch_id];
   const branches = allBranches.filter(branch => allowedIds.includes(branch.id));
-  root.innerHTML = `<div class="page-intro"><div><h2>إدارة السجلات</h2><p>اختر أي يوم لمراجعة وتعديل أو حذف حركات الصرف والإضافات حسب صلاحياتك.</p></div></div>
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  root.innerHTML = `<div class="page-intro"><div><h2>إدارة السجلات</h2><p>اختر فترة زمنية لمراجعة وتعديل أو حذف حركات الصرف والإضافات حسب صلاحياتك.</p></div></div>
   <section class="panel"><div class="panel-body"><form class="filters records-filters" id="records-filters">
-    <div class="field"><label>اليوم<input type="date" name="date" value="${today()}" required></label></div>
+    <div class="field"><label>من تاريخ<input type="date" name="from" value="${monthStart.toLocaleDateString('en-CA')}" required></label></div>
+    <div class="field"><label>إلى تاريخ<input type="date" name="to" value="${today()}" required></label></div>
     <div class="field"><label>الفرع<select name="branch"><option value="">كل الفروع المسموحة</option>${branches.map(branch => `<option value="${branch.id}">${escapeHtml(branch.name)}</option>`).join('')}</select></label></div>
     <div class="field"><label>نوع الحركة<select name="type"><option value="all">الصرف والإضافات</option><option value="consumption">الصرف فقط</option><option value="additions">الإضافات فقط</option></select></label></div>
     <div class="field"><label>العميلة<input type="search" name="client_search" autocomplete="off" placeholder="اسم العميلة أو الكود"></label></div>
@@ -30,8 +33,9 @@ export async function renderRecords(root, profile) {
     drawRows(root.querySelector('#records-output'), rows, branches, allBranches, materials, profile, load);
   };
   const load = async (resetPage = false) => {
+    if (form.from.value > form.to.value) return toast('تاريخ البداية يجب أن يكون قبل تاريخ النهاية', 'warning');
     if (resetPage) currentPage = 1;
-    const filters = { date: form.date.value };
+    const filters = { date_from: form.from.value, date_to: form.to.value };
     if (form.branch.value) filters.branch_id = form.branch.value;
     const type = form.type.value;
     const output = root.querySelector('#records-output');
@@ -62,7 +66,7 @@ function drawRows(output, rows, branches, allBranches, materials, profile, reloa
   const canEdit = !!profile.permissions?.edit_records;
   const canDelete = !!profile.permissions?.delete_records;
   const actionHeader = canEdit || canDelete ? '<th>الإجراءات</th>' : '';
-  output.innerHTML = `<section class="panel"><div class="panel-head"><div><h3>السجلات المطابقة</h3><p>${rows.length} حركة — يعرض كل صفحة 20 سجلًا</p></div><div class="record-access-hint">${canEdit ? '<span class="badge client">تعديل مسموح</span>' : ''}${canDelete ? '<span class="badge delete-badge">حذف مسموح</span>' : ''}</div></div><div class="table-wrap">${rows.length ? `<table class="data-table"><thead><tr><th>الوقت</th><th>الفرع</th><th>الحركة</th><th>العميلة / البيان</th><th>الصنف</th><th>الكمية</th><th>القيمة</th><th>بواسطة</th>${actionHeader}</tr></thead><tbody>${visible.map(row => recordRow(row, canEdit, canDelete)).join('')}</tbody></table>` : '<div class="empty-state"><b>—</b>لا توجد سجلات في اليوم المختار</div>'}</div>${pagination(rows.length, pages)}</section>`;
+  output.innerHTML = `<section class="panel"><div class="panel-head"><div><h3>السجلات المطابقة</h3><p>${rows.length} حركة — يعرض كل صفحة 20 سجلًا</p></div><div class="record-access-hint">${canEdit ? '<span class="badge client">تعديل مسموح</span>' : ''}${canDelete ? '<span class="badge delete-badge">حذف مسموح</span>' : ''}</div></div><div class="table-wrap">${rows.length ? `<table class="data-table"><thead><tr><th>التاريخ</th><th>الوقت</th><th>الفرع</th><th>الحركة</th><th>العميلة / البيان</th><th>الصنف</th><th>الكمية</th><th>القيمة</th><th>بواسطة</th>${actionHeader}</tr></thead><tbody>${visible.map(row => recordRow(row, canEdit, canDelete)).join('')}</tbody></table>` : '<div class="empty-state"><b>—</b>لا توجد سجلات في الفترة المختارة</div>'}</div>${pagination(rows.length, pages)}</section>`;
   output.querySelectorAll('[data-record-edit]').forEach(button => button.onclick = () => {
     const row = rows.find(item => item.id === button.dataset.recordEdit && item.movement === button.dataset.kind);
     openEditModal(row, branches, allBranches, materials, reload);
@@ -88,7 +92,7 @@ function recordRow(row, canEdit, canDelete) {
     ? `<span class="row-title">${escapeHtml(row.client_name || 'بدون اسم')}</span><small class="row-sub">${escapeHtml(row.client_code || 'بدون كود')}</small>`
     : escapeHtml(row.notes || 'إضافة مخزون');
   const actions = canEdit || canDelete ? `<td><div class="record-actions">${canEdit ? `<button class="edit-icon" data-record-edit="${row.id}" data-kind="${row.movement}" title="تعديل">✎</button>` : ''}${canDelete ? `<button class="delete-icon" data-record-delete="${row.id}" data-kind="${row.movement}" title="حذف">×</button>` : ''}</div></td>` : '';
-  return `<tr><td>${new Date(row.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</td><td>${escapeHtml(row.branches?.name || '—')}</td><td><span class="badge ${consumption ? row.record_type : 'admin'}">${consumption ? row.record_type === 'transfer' ? 'تحويل' : 'صرف' : 'إضافة'}</span></td><td>${description}</td><td><span class="row-title">${escapeHtml(row.materials?.name || '—')}</span><small class="row-sub">${escapeHtml(row.materials?.code || '')}</small></td><td>${money(row.quantity)} ${escapeHtml(row.unit || row.materials?.unit || '')}</td><td>${consumption ? money(Number(row.quantity) * Number(row.selling_price || 0)) + ' ج.م' : '—'}</td><td>${escapeHtml(row.users?.full_name || '—')}</td>${actions}</tr>`;
+  return `<tr><td>${escapeHtml(row.date)}</td><td>${new Date(row.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</td><td>${escapeHtml(row.branches?.name || '—')}</td><td><span class="badge ${consumption ? row.record_type : 'admin'}">${consumption ? row.record_type === 'transfer' ? 'تحويل' : 'صرف' : 'إضافة'}</span></td><td>${description}</td><td><span class="row-title">${escapeHtml(row.materials?.name || '—')}</span><small class="row-sub">${escapeHtml(row.materials?.code || '')}</small></td><td>${money(row.quantity)} ${escapeHtml(row.unit || row.materials?.unit || '')}</td><td>${consumption ? money(Number(row.quantity) * Number(row.selling_price || 0)) + ' ج.م' : '—'}</td><td>${escapeHtml(row.users?.full_name || '—')}</td>${actions}</tr>`;
 }
 
 function pagination(total, pages) {
