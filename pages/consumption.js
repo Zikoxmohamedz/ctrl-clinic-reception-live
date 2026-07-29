@@ -19,7 +19,7 @@ export async function renderConsumption(root, profile) {
       </div>
       <div class="section-divider"></div>
       <div class="field search-wrap"><label>البحث عن مادة <input id="material-search" autocomplete="off" placeholder="اكتب اسم المادة أو الكود (حرفان على الأقل)"></label><div id="material-results" class="autocomplete" hidden></div></div>
-      <div class="table-wrap consumption-items-wrap" style="margin-top:16px"><table class="data-table consumption-items-table"><thead><tr><th>المادة</th><th>الوحدة</th><th>الكمية *</th><th>سعر الوحدة للعميلة</th><th></th></tr></thead><tbody id="items-body"></tbody></table><div id="items-empty" class="empty-state"><b>＋</b>ابحث عن مادة وأضفها إلى العملية</div></div>
+      <div class="table-wrap consumption-items-wrap" style="margin-top:16px"><table class="data-table consumption-items-table"><thead><tr><th>المادة</th><th>الوحدة</th><th>الكمية *</th><th>إجمالي سعر البيع</th><th></th></tr></thead><tbody id="items-body"></tbody></table><div id="items-empty" class="empty-state"><b>＋</b>ابحث عن مادة وأضفها إلى العملية</div></div>
       <div class="form-actions"><button type="reset" class="btn ghost">مسح البيانات</button><button class="btn primary" type="submit">تسجيل الصرف ←</button></div>
     </div>
   </form>`;
@@ -98,7 +98,7 @@ export async function renderConsumption(root, profile) {
   });
 
   function renderItems() {
-    tbody.innerHTML = items.map((material, index) => `<tr><td class="item-material" data-label="المادة"><span class="row-title">${escapeHtml(material.name)}</span><small class="row-sub">${escapeHtml(material.code)}</small></td><td class="item-unit" data-label="الوحدة">${escapeHtml(material.unit)}</td><td class="item-quantity" data-label="الكمية *"><input class="table-input" type="number" min="0.01" step="any" data-q="${index}" value="${escapeHtml(material.draft_quantity ?? '1')}" required></td><td class="item-price" data-label="سعر الوحدة للعميلة"><input class="table-input" type="number" min="0" step="any" data-p="${index}" value="${escapeHtml(material.draft_price ?? String(Number(material.default_price || 0)))}" placeholder="0"></td><td class="item-remove"><button type="button" class="delete-icon" data-remove="${index}" aria-label="حذف ${escapeHtml(material.name)}">×</button></td></tr>`).join('');
+    tbody.innerHTML = items.map((material, index) => `<tr><td class="item-material" data-label="المادة"><span class="row-title">${escapeHtml(material.name)}</span><small class="row-sub">${escapeHtml(material.code)}</small></td><td class="item-unit" data-label="الوحدة">${escapeHtml(material.unit)}</td><td class="item-quantity" data-label="الكمية *"><input class="table-input" type="number" min="0.01" step="any" data-q="${index}" value="${escapeHtml(material.draft_quantity ?? '1')}" required></td><td class="item-price" data-label="إجمالي سعر البيع"><input class="table-input" type="number" min="0" step="any" data-p="${index}" value="${escapeHtml(material.draft_price ?? String(Number(material.default_price || 0)))}" placeholder="0"></td><td class="item-remove"><button type="button" class="delete-icon" data-remove="${index}" aria-label="حذف ${escapeHtml(material.name)}">×</button></td></tr>`).join('');
     root.querySelector('#items-empty').hidden = items.length > 0;
     tbody.querySelectorAll('[data-q]').forEach(input => input.oninput = () => {
       items[Number(input.dataset.q)].draft_quantity = input.value;

@@ -6,10 +6,10 @@ const pageLabels = { consumption: 'صرف المواد', additions: 'الإضا�
 const tableLabels = { consumption_records: 'سجل صرف', stock_additions: 'سجل إضافة', materials: 'صنف', branches: 'فرع', users: 'مستخدم', user_branches: 'فروع المستخدم', user_permissions: 'صلاحيات المستخدم' };
 const actionLabels = { INSERT: 'إضافة', UPDATE: 'تعديل', DELETE: 'حذف' };
 const fieldLabels = {
-  quantity: 'الكمية', selling_price: 'سعر الوحدة', date: 'التاريخ', material_id: 'الصنف', branch_id: 'الفرع',
+  quantity: 'الكمية', selling_price: 'إجمالي سعر البيع', date: 'التاريخ', material_id: 'الصنف', branch_id: 'الفرع',
   client_name: 'اسم العميلة', client_code: 'كود العميلة', unit: 'الوحدة', notes: 'الملاحظات', record_type: 'نوع الحركة',
   transfer_to: 'الفرع المستلم', name: 'الاسم', code: 'الكود', barcode: 'الباركود', category: 'التصنيف',
-  default_price: 'السعر الافتراضي', scope: 'نطاق الصنف', is_temp: 'صنف مؤقت', archived_at: 'حالة الأرشفة',
+  default_price: 'إجمالي سعر البيع الافتراضي', scope: 'نطاق الصنف', is_temp: 'صنف مؤقت', archived_at: 'حالة الأرشفة',
   full_name: 'الاسم الكامل', username: 'اسم المستخدم', email: 'البريد الإلكتروني', role: 'المسمى الوظيفي', user_id: 'المستخدم',
   can_home: 'لوحة التحكم', can_consumption: 'صرف المواد', can_additions: 'الإضافات', can_reports: 'التقارير',
   can_records: 'إدارة السجلات', can_edit_records: 'تعديل السجلات', can_delete_records: 'حذف السجلات',
