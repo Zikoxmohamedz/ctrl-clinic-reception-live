@@ -1,5 +1,5 @@
-import { today, money, escapeHtml, toast } from '../supabase.js';
-import { list, hydrate } from '../data.js';
+import { today, money, escapeHtml, toast } from '../supabase.js?v=20260730-latin-digits';
+import { list, hydrate } from '../data.js?v=20260730-latin-digits';
 
 const PAGE_SIZE = 20;
 let reportState = {};
@@ -176,8 +176,8 @@ function renderDetailedSection() {
   pageState.detailed = page;
   const visible = pageSlice(rows, page);
   const totalQuantity = rows.reduce((sum, row) => sum + Number(row.quantity), 0);
-  const totalRevenue = rows.reduce((sum, row) => sum + Number(row.selling_price || 0), 0);
-  return `<section class="panel report-section" id="report-detailed"><div class="panel-head gold-line"><div><h3>تقرير مفصل للصرف</h3><p>${rows.length} سجل مطابق للفلاتر</p></div>${actions('detailed')}</div><div class="table-wrap">${rows.length ? `<table class="data-table"><thead><tr><th>#</th><th>التاريخ</th><th>الفرع</th><th>العميلة</th><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>إجمالي سعر البيع</th><th>النوع</th><th>بواسطة</th></tr></thead><tbody>${visible.map((row, index) => `<tr><td>${(page - 1) * PAGE_SIZE + index + 1}</td><td>${row.date}</td><td>${escapeHtml(row.branches?.name)}</td><td><span class="row-title">${escapeHtml(row.client_name)}</span><small class="row-sub">${escapeHtml(row.client_code)}</small></td><td><span class="row-title">${escapeHtml(row.materials?.name)}</span><small class="row-sub">${escapeHtml(row.materials?.code)}</small></td><td>${escapeHtml(row.unit)}</td><td>${row.quantity}</td><td><b>${money(row.selling_price)}</b></td><td><span class="badge ${row.record_type}">${row.record_type === 'client' ? 'عميلة' : 'تحويل'}</span></td><td>${escapeHtml(row.users?.full_name || '—')}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="6">إجمالي كل النتائج</td><td>${money(totalQuantity)}</td><td>${money(totalRevenue)} ج.م</td><td colspan="2"></td></tr></tfoot></table>` : empty('لا توجد بيانات مطابقة')}</div>${pagination('detailed', rows.length, page, 'report-detailed')}</section>`;
+  const totalRevenue = rows.reduce((sum, row) => sum + Number(row.quantity) * Number(row.selling_price || 0), 0);
+  return `<section class="panel report-section" id="report-detailed"><div class="panel-head gold-line"><div><h3>تقرير مفصل للصرف</h3><p>${rows.length} سجل مطابق للفلاتر</p></div>${actions('detailed')}</div><div class="table-wrap">${rows.length ? `<table class="data-table"><thead><tr><th>#</th><th>التاريخ</th><th>الفرع</th><th>العميلة</th><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th><th>النوع</th><th>بواسطة</th></tr></thead><tbody>${visible.map((row, index) => `<tr><td>${(page - 1) * PAGE_SIZE + index + 1}</td><td>${row.date}</td><td>${escapeHtml(row.branches?.name)}</td><td><span class="row-title">${escapeHtml(row.client_name)}</span><small class="row-sub">${escapeHtml(row.client_code)}</small></td><td><span class="row-title">${escapeHtml(row.materials?.name)}</span><small class="row-sub">${escapeHtml(row.materials?.code)}</small></td><td>${escapeHtml(row.unit)}</td><td>${row.quantity}</td><td>${money(row.selling_price)}</td><td><b>${money(row.quantity * row.selling_price)}</b></td><td><span class="badge ${row.record_type}">${row.record_type === 'client' ? 'عميلة' : 'تحويل'}</span></td><td>${escapeHtml(row.users?.full_name || '—')}</td></tr>`).join('')}</tbody><tfoot><tr><td colspan="6">إجمالي كل النتائج</td><td>${money(totalQuantity)}</td><td></td><td>${money(totalRevenue)} ج.م</td><td colspan="2"></td></tr></tfoot></table>` : empty('لا توجد بيانات مطابقة')}</div>${pagination('detailed', rows.length, page, 'report-detailed')}</section>`;
 }
 
 function renderSummarySection() {
@@ -250,7 +250,7 @@ function groupSummary(rows, branches) {
     map[branchId] ??= { key: branchId, branch: row.branches || branches.find(branch => branch.id === branchId), items: {} };
     map[branchId].items[row.material_id] ??= { material: row.materials, quantity: 0, revenue: 0 };
     map[branchId].items[row.material_id].quantity += Number(row.quantity);
-    map[branchId].items[row.material_id].revenue += Number(row.selling_price || 0);
+    map[branchId].items[row.material_id].revenue += Number(row.quantity) * Number(row.selling_price || 0);
   });
   return Object.values(map);
 }
@@ -286,14 +286,14 @@ function renderBalanceTable(rows) {
 
 function rowsFor(type) {
   const state = reportState;
-  if (type === 'detailed') return state.consumption.map(row => ({ 'التاريخ': row.date, 'الفرع': row.branches?.name, 'العميلة': row.client_name, 'كود العميلة': row.client_code, 'الصنف': row.materials?.name, 'كود الصنف': row.materials?.code, 'الوحدة': row.unit, 'الكمية': row.quantity, 'إجمالي سعر البيع': row.selling_price || 0, 'النوع': row.record_type === 'client' ? 'عميلة' : 'تحويل', 'بواسطة': row.users?.full_name || '' }));
+  if (type === 'detailed') return state.consumption.map(row => ({ 'التاريخ': row.date, 'الفرع': row.branches?.name, 'العميلة': row.client_name, 'كود العميلة': row.client_code, 'الصنف': row.materials?.name, 'كود الصنف': row.materials?.code, 'الوحدة': row.unit, 'الكمية': row.quantity, 'سعر الوحدة': row.selling_price || 0, 'الإجمالي': row.quantity * (row.selling_price || 0), 'النوع': row.record_type === 'client' ? 'عميلة' : 'تحويل', 'بواسطة': row.users?.full_name || '' }));
   if (type === 'summary') return state.summary.flatMap(group => Object.values(group.items).map(item => ({ 'الفرع': group.branch?.name, 'الصنف': item.material?.name, 'كود الصنف': item.material?.code, 'الوحدة': item.material?.unit, 'إجمالي الكمية': item.quantity, 'إجمالي الإيراد': item.revenue })));
   if (type === 'additions') return state.additions.map(row => ({ 'التاريخ': row.date, 'الفرع': row.branches?.name, 'الصنف': row.materials?.name, 'كود الصنف': row.materials?.code, 'الوحدة': row.materials?.unit, 'الكمية المضافة': row.quantity, 'بواسطة': row.users?.full_name || '' }));
   if (type === 'additions-summary') return state.additionsSummary.flatMap(group => Object.values(group.items).map(item => ({ 'الفرع': group.branch?.name, 'الصنف': item.material?.name, 'كود الصنف': item.material?.code, 'الوحدة': item.material?.unit, 'إجمالي الكمية المضافة': item.quantity })));
   return state.balance.map(row => ({ 'الفرع': row.branch?.name, 'الصنف': row.material?.name, 'كود الصنف': row.material?.code, 'الوحدة': row.material?.unit, 'إجمالي المضاف': row.added, 'إجمالي المصروف': row.consumed, 'الرصيد': row.balance }));
 }
 
-const MOVEMENT_HEADERS = ['التاريخ', 'الفرع', 'نوع الحركة', 'الصنف', 'كود الصنف', 'الوحدة', 'الكمية', 'إجمالي سعر البيع', 'العميلة', 'كود العميلة', 'نوع الصرف', 'بواسطة'];
+const MOVEMENT_HEADERS = ['التاريخ', 'الفرع', 'نوع الحركة', 'الصنف', 'كود الصنف', 'الوحدة', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'العميلة', 'كود العميلة', 'نوع الصرف', 'بواسطة'];
 const FULL_SUMMARY_HEADERS = ['الفرع', 'الصنف', 'كود الصنف', 'الوحدة', 'إجمالي المضاف', 'إجمالي المصروف', 'الرصيد', 'إجمالي الإيراد'];
 
 function scopedBranches() {
@@ -306,7 +306,7 @@ function movementRows(branchId = '') {
     .map(row => ({
       'التاريخ': row.date, 'الفرع': row.branches?.name || '', 'نوع الحركة': 'صرف',
       'الصنف': row.materials?.name || '', 'كود الصنف': row.materials?.code || '', 'الوحدة': row.unit || row.materials?.unit || '',
-      'الكمية': Number(row.quantity || 0), 'إجمالي سعر البيع': Number(row.selling_price || 0),
+      'الكمية': Number(row.quantity || 0), 'سعر الوحدة': Number(row.selling_price || 0), 'الإجمالي': Number(row.quantity || 0) * Number(row.selling_price || 0),
       'العميلة': row.client_name || '', 'كود العميلة': row.client_code || '', 'نوع الصرف': row.record_type === 'client' ? 'عميلة' : 'تحويل',
       'بواسطة': row.users?.full_name || ''
     }));
@@ -315,7 +315,7 @@ function movementRows(branchId = '') {
     .map(row => ({
       'التاريخ': row.date, 'الفرع': row.branches?.name || '', 'نوع الحركة': 'إضافة',
       'الصنف': row.materials?.name || '', 'كود الصنف': row.materials?.code || '', 'الوحدة': row.materials?.unit || '',
-      'الكمية': Number(row.quantity || 0), 'إجمالي سعر البيع': 0,
+      'الكمية': Number(row.quantity || 0), 'سعر الوحدة': 0, 'الإجمالي': 0,
       'العميلة': '', 'كود العميلة': '', 'نوع الصرف': '', 'بواسطة': row.users?.full_name || ''
     }));
   return [...consumption, ...additions].sort((a, b) => String(a['التاريخ']).localeCompare(String(b['التاريخ'])) || String(a['الفرع']).localeCompare(String(b['الفرع'])));
@@ -325,7 +325,7 @@ function fullSummaryRows(branchId = '') {
   const revenue = new Map();
   reportState.consumption.filter(row => !branchId || row.branch_id === branchId).forEach(row => {
     const key = `${row.branch_id}|${row.material_id}`;
-    revenue.set(key, (revenue.get(key) || 0) + Number(row.selling_price || 0));
+    revenue.set(key, (revenue.get(key) || 0) + Number(row.quantity || 0) * Number(row.selling_price || 0));
   });
   return reportState.balance
     .filter(row => !branchId || row.branch_id === branchId)
@@ -343,7 +343,7 @@ function withTotals(rows, headers, label) {
   if (!rows.length) return rows;
   const total = Object.fromEntries(headers.map(header => [header, '']));
   total[headers[0]] = label;
-  const numeric = headers.filter(header => rows.some(row => typeof row[header] === 'number'));
+  const numeric = headers.filter(header => header !== 'سعر الوحدة' && rows.some(row => typeof row[header] === 'number'));
   numeric.forEach(header => total[header] = rows.reduce((sum, row) => sum + Number(row[header] || 0), 0));
   return [...rows, total];
 }
@@ -550,12 +550,12 @@ function printReport(type) {
     }).join('');
   } else {
     const data = rowsFor(type);
-    const headers = data[0] ? Object.keys(data[0]) : type === 'detailed' ? ['التاريخ', 'الفرع', 'العميلة', 'كود العميلة', 'الصنف', 'كود الصنف', 'الوحدة', 'الكمية', 'إجمالي سعر البيع', 'النوع', 'بواسطة'] : type === 'additions' ? ['التاريخ', 'الفرع', 'الصنف', 'كود الصنف', 'الوحدة', 'الكمية المضافة', 'بواسطة'] : FULL_SUMMARY_HEADERS.slice(0, 7);
+    const headers = data[0] ? Object.keys(data[0]) : type === 'detailed' ? ['التاريخ', 'الفرع', 'العميلة', 'كود العميلة', 'الصنف', 'كود الصنف', 'الوحدة', 'الكمية', 'سعر الوحدة', 'الإجمالي', 'النوع', 'بواسطة'] : type === 'additions' ? ['التاريخ', 'الفرع', 'الصنف', 'كود الصنف', 'الوحدة', 'الكمية المضافة', 'بواسطة'] : FULL_SUMMARY_HEADERS.slice(0, 7);
     content = printTable(headers, data, row => Number(row['الرصيد']) < 0 ? 'negative' : '');
   }
   printWindow.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${titles[type]}</title><style>
     @page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#111;background:#fff;margin:0;font-size:10px}header{border-bottom:3px solid #b38b36;margin-bottom:14px;padding:0 0 10px;display:flex;justify-content:space-between;align-items:end}h1{margin:0;font-size:21px;color:#142a55}h2{font-size:16px;margin:12px 0 7px;color:#142a55}.meta{line-height:1.8;text-align:left;color:#444}table{width:100%;border-collapse:collapse;table-layout:auto;margin-bottom:14px}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}th{background:#142a55!important;color:#fff!important;font-weight:700;padding:6px 5px;border:1px solid #8993a5;white-space:nowrap}td{padding:5px;border:1px solid #bbb;text-align:center;vertical-align:middle}tbody tr:nth-child(even) td{background:#f3f5f8}.negative td{background:#fee2e2!important;color:#991b1b;font-weight:700}.branch-section{break-after:page}.branch-section:last-child{break-after:auto}.empty-print{padding:30px;color:#666}.brand{font-weight:900;font-size:28px;color:#b38b36}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body><header><div><div class="brand">Ctrl.</div><h1>${titles[type]}</h1></div><div class="meta">الفترة: ${reportState.from} إلى ${reportState.to}<br>الفرع: ${escapeHtml(branchScope || '')}<br>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</div></header>${content}<script>window.onload=()=>setTimeout(()=>{window.print();window.onafterprint=()=>window.close()},250)<\/script></body></html>`);
+  </style></head><body><header><div><div class="brand">Ctrl.</div><h1>${titles[type]}</h1></div><div class="meta">الفترة: ${reportState.from} إلى ${reportState.to}<br>الفرع: ${escapeHtml(branchScope || '')}<br>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG-u-nu-latn')}</div></header>${content}<script>window.onload=()=>setTimeout(()=>{window.print();window.onafterprint=()=>window.close()},250)<\/script></body></html>`);
   printWindow.document.close();
 }
 

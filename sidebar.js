@@ -1,12 +1,12 @@
 import './theme.js';
-import { supabase } from './supabase.js';
-import { renderConsumption } from './pages/consumption.js?v=20260728-mobile-cards';
-import { renderAdditions } from './pages/additions.js?v=20260719-history-choice';
-import { renderReports } from './pages/reports.js?v=20260728-styled-excel';
-import { renderRecords } from './pages/records.js?v=20260728-save-fix';
-import { renderAuditLogs } from './pages/audit-logs.js?v=20260728-audit';
-import { renderSettings } from './pages/settings.js?v=20260719-history-choice';
-import { list, hydrate } from './data.js';
+import { supabase } from './supabase.js?v=20260730-latin-digits';
+import { renderConsumption } from './pages/consumption.js?v=20260730-temp-save-v2';
+import { renderAdditions } from './pages/additions.js?v=20260730-temp-save-v2';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260730-inventory-v9';
+import { renderReports } from './pages/reports.js?v=20260730-latin-digits';
+import { renderRecords } from './pages/records.js?v=20260730-latin-digits';
+import { renderSettings } from './pages/settings.js?v=20260730-inventory-report-permissions';
+import { list, hydrate } from './data.js?v=20260730-latin-digits';
 
 const profile = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
 if (!profile || !supabase) {
@@ -26,22 +26,22 @@ async function refreshCurrentAccess() {
   if (!supabase) return;
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('branch_id').eq('user_id', profile.id),
-    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings').eq('user_id', profile.id).single(),
+    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_reports,can_records,can_edit_records,can_delete_records,can_settings').eq('user_id', profile.id).single(),
   ]);
   if (!branchesResult.error && branchesResult.data.length) profile.branch_ids = branchesResult.data.map(row => row.branch_id);
   if (!permissionsResult.error) {
     const row = permissionsResult.data;
-    profile.permissions = { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, audit_logs: row.can_audit_logs, settings: row.can_settings };
+    profile.permissions = { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings };
   }
   sessionStorage.setItem('ctrl_profile', JSON.stringify(profile));
 }
 
 await refreshCurrentAccess();
 
-const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
+const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
 const content = document.getElementById('app-content');
 const sidebar = document.getElementById('sidebar');
-const permissions = profile.permissions || { home: true, consumption: true, additions: true, reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', audit_logs: profile.role === 'admin', settings: profile.role === 'admin' };
+const permissions = profile.permissions || { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: profile.role === 'admin', reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', settings: profile.role === 'admin' };
 
 document.querySelectorAll('[data-user-name]').forEach(item => item.textContent = profile?.full_name || '');
 document.querySelectorAll('[data-branch-name]').forEach(item => item.textContent = profile?.branch_name || '');
@@ -106,10 +106,10 @@ async function home() {
   const [consumption, additions] = await Promise.all([list('consumption', { date }), list('additions', { date })]);
   const branchConsumption = consumption.filter(row => row.branch_id === profile.branch_id);
   const branchAdditions = additions.filter(row => row.branch_id === profile.branch_id);
-  const revenue = branchConsumption.reduce((sum, row) => sum + Number(row.selling_price || 0), 0);
-  content.innerHTML = `<section class="panel welcome"><div class="panel-body"><p class="eyebrow">${new Date().toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>أهلاً، ${profile.full_name.split(' ')[0]} 👋</h2><p>إليك ملخص حركة فرع ${profile.branch_name} اليوم.</p></div></section>
-  <section class="stats-grid"><article class="stat-card"><span>عمليات الصرف اليوم</span><strong>${branchConsumption.length}</strong><i>◫</i></article><article class="stat-card"><span>إجمالي الكمية المصروفة</span><strong>${branchConsumption.reduce((sum, row) => sum + Number(row.quantity), 0)}</strong><i>−</i></article><article class="stat-card"><span>الإضافات اليوم</span><strong>${branchAdditions.length}</strong><i>＋</i></article><article class="stat-card"><span>إيراد اليوم</span><strong>${new Intl.NumberFormat('ar-EG').format(revenue)} <small>ج.م</small></strong><i>↗</i></article></section>
-  <section class="quick-grid"><article class="panel"><div class="panel-head"><h3>إجراءات سريعة</h3></div><div class="panel-body quick-actions"><a href="#consumption"><b>◫</b>تسجيل صرف جديد</a><a href="#additions"><b>＋</b>تسجيل إضافة مخزون</a><a href="#reports"><b>⌁</b>عرض التقارير</a></div></article><article class="panel"><div class="panel-head"><h3>آخر الحركات</h3></div><div class="panel-body">${hydrate(branchConsumption).slice(-3).reverse().map(row => `<div class="summary-row"><span>${row.materials?.name}</span><b>${row.quantity} ${row.unit}</b><small>${new Date(row.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</small></div>`).join('') || '<div class="empty-state">لا توجد حركات اليوم</div>'}</div></article></section>`;
+  const revenue = branchConsumption.reduce((sum, row) => sum + row.quantity * (row.selling_price || 0), 0);
+  content.innerHTML = `<section class="panel welcome"><div class="panel-body"><p class="eyebrow">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>أهلاً، ${profile.full_name.split(' ')[0]} 👋</h2><p>إليك ملخص حركة فرع ${profile.branch_name} اليوم.</p></div></section>
+  <section class="stats-grid"><article class="stat-card"><span>عمليات الصرف اليوم</span><strong>${branchConsumption.length}</strong><i>◫</i></article><article class="stat-card"><span>إجمالي الكمية المصروفة</span><strong>${branchConsumption.reduce((sum, row) => sum + Number(row.quantity), 0)}</strong><i>−</i></article><article class="stat-card"><span>الإضافات اليوم</span><strong>${branchAdditions.length}</strong><i>＋</i></article><article class="stat-card"><span>إيراد اليوم</span><strong>${new Intl.NumberFormat('ar-EG-u-nu-latn').format(revenue)} <small>ج.م</small></strong><i>↗</i></article></section>
+  <section class="quick-grid"><article class="panel"><div class="panel-head"><h3>إجراءات سريعة</h3></div><div class="panel-body quick-actions"><a href="#consumption"><b>◫</b>تسجيل صرف جديد</a><a href="#additions"><b>＋</b>تسجيل إضافة مخزون</a><a href="#reports"><b>⌁</b>عرض التقارير</a></div></article><article class="panel"><div class="panel-head"><h3>آخر الحركات</h3></div><div class="panel-body">${hydrate(branchConsumption).slice(-3).reverse().map(row => `<div class="summary-row"><span>${row.materials?.name}</span><b>${row.quantity} ${row.unit}</b><small>${new Date(row.created_at).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</small></div>`).join('') || '<div class="empty-state">لا توجد حركات اليوم</div>'}</div></article></section>`;
 }
 
 async function route() {
@@ -121,13 +121,14 @@ async function route() {
   document.getElementById('breadcrumb').textContent = titles[name];
   content.innerHTML = '<div class="empty-state">جارٍ تحميل البيانات...</div>';
   sidebar.classList.remove('open');
+  if (name !== 'inventory') cleanupInventory();
   try {
     if (name === 'home') await home();
     if (name === 'consumption') await renderConsumption(content, profile);
     if (name === 'additions') await renderAdditions(content, profile);
+    if (name === 'inventory') await renderInventory(content, profile);
     if (name === 'reports') await renderReports(content, profile);
     if (name === 'records') await renderRecords(content, profile);
-    if (name === 'audit_logs') await renderAuditLogs(content, profile);
     if (name === 'settings') await renderSettings(content, profile);
     content.focus();
   } catch (error) {

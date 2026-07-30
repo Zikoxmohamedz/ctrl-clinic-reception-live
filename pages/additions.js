@@ -1,6 +1,6 @@
-import { today, toast, escapeHtml } from '../supabase.js';
-import { insert, searchMaterials } from '../data.js';
-import { openTemporaryMaterial } from './temp-material.js';
+import { today, toast, escapeHtml } from '../supabase.js?v=20260730-latin-digits';
+import { insert, searchMaterials } from '../data.js?v=20260730-latin-digits';
+import { openTemporaryMaterial } from './temp-material.js?v=20260730-temp-save-v2';
 
 export async function renderAdditions(root, profile) {
   let selected = null;

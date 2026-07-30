@@ -1,4 +1,4 @@
-import { escapeHtml, toast } from '../supabase.js';
+import { escapeHtml, toast } from '../supabase.js?v=20260730-latin-digits';
 
 export function openTemporaryMaterial(initialName, onSave) {
   const root = document.getElementById('modal-root');
@@ -8,11 +8,26 @@ export function openTemporaryMaterial(initialName, onSave) {
   root.querySelectorAll('.modal-x,.modal-cancel').forEach(button => button.onclick = close);
   form.onsubmit = async event => {
     event.preventDefault();
-    const button = form.querySelector('[type="submit"]');
+    if (!form.reportValidity()) return;
+    const button = event.submitter || form.querySelector('[type="submit"]');
     button.disabled = true;
+    button.textContent = 'جارٍ الحفظ...';
     try {
-      await onSave({ name: form.name.value.trim(), code: form.code.value.trim().toUpperCase(), unit: form.unit.value.trim(), category: form.category.value.trim(), default_price: 0, scope: 'temporary', is_temp: true });
+      const fields = form.elements;
+      await onSave({
+        name: fields.namedItem('name').value.trim(),
+        code: fields.namedItem('code').value.trim().toUpperCase(),
+        unit: fields.namedItem('unit').value.trim(),
+        category: fields.namedItem('category').value.trim(),
+        default_price: 0,
+        scope: 'temporary',
+        is_temp: true,
+      });
       close();
-    } catch (error) { toast(error.message, 'error'); button.disabled = false; }
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+      button.textContent = 'حفظ وإضافة';
+    }
   };
 }

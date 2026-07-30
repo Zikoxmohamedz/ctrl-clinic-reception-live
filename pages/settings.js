@@ -1,8 +1,13 @@
-import { escapeHtml, toast, confirmDialog, supabase } from '../supabase.js';
-import { list, insert, remove } from '../data.js';
+import { escapeHtml, toast, confirmDialog, supabase } from '../supabase.js?v=20260730-latin-digits';
+import { list, insert, remove } from '../data.js?v=20260730-latin-digits';
 
-const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
-const actionLabels = { edit_records: 'تعديل السجلات', delete_records: 'حذف السجلات' };
+const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد — فتح الصفحة', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
+const actionLabels = {
+  inventory_reports: 'عرض وتصدير تقارير الجرد',
+  inventory_all_reports: 'تقرير الجرد المجمع لكل الفروع',
+  edit_records: 'تعديل السجلات',
+  delete_records: 'حذف السجلات',
+};
 const accessLabels = { ...pageLabels, ...actionLabels };
 
 export async function renderSettings(root) {
@@ -46,8 +51,8 @@ async function usersTab(box) {
       <div class="field"><label>كلمة المرور<input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 أحرف على الأقل" required></label></div>
       <div class="field"><label>المسمى الوظيفي<select name="role"><option value="receptionist">موظف استقبال</option><option value="admin">مدير</option></select></label></div>
       <div class="field span-2"><label>الفروع المسموحة <em>*</em></label><div class="check-grid branch-checks">${branches.map((branch, index) => checkCard('branch_ids', branch.id, branch.name, index === 0)).join('')}</div></div>
-      <div class="field span-2"><label>الصفحات الظاهرة <em>*</em></label><div class="check-grid permission-checks">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !['records', 'audit_logs', 'settings'].includes(key))).join('')}</div></div>
-      <div class="field span-2"><label>صلاحيات إجراءات السجلات</label><div class="check-grid permission-checks">${Object.entries(actionLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, false)).join('')}</div></div>
+      <div class="field span-2"><label>الصفحات الظاهرة <em>*</em></label><div class="check-grid permission-checks">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !['records', 'settings'].includes(key))).join('')}</div></div>
+      <div class="field span-2"><label>صلاحيات الإجراءات والتقارير</label><div class="check-grid permission-checks">${Object.entries(actionLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, false)).join('')}</div></div>
       <button class="btn primary">إضافة الموظف</button>
     </form>
     <div class="section-divider"></div>
@@ -66,7 +71,8 @@ async function usersTab(box) {
     const permissions = Object.fromEntries(Object.keys(accessLabels).map(key => [key, form.querySelector(`[name="permission_${key}"]`).checked]));
     if (!branchIds.length) return toast('اختر فرعاً واحداً على الأقل', 'warning');
     if (!Object.values(permissions).some(Boolean)) return toast('اختر صفحة واحدة على الأقل', 'warning');
-    if ((permissions.edit_records || permissions.delete_records) && !permissions.records) return toast('فعّل صفحة إدارة السجلات مع صلاحية التعديل أو الحذف', 'warning');
+    const permissionError = validatePermissionDependencies(permissions);
+    if (permissionError) return toast(permissionError, 'warning');
     try {
       await createUser({ full_name: form.full_name.value.trim(), username: form.username.value.trim().toLowerCase(), password: form.password.value, branch_id: branchIds[0], branch_ids: branchIds, role: form.role.value, permissions });
       toast('تمت إضافة الموظف ويمكنه الدخول فورًا');
@@ -83,7 +89,7 @@ async function permissionsTab(box) {
   box.innerHTML = `<div class="panel-body"><div class="settings-callout"><div><b>صلاحيات المستخدمين</b><span>اختر الفروع والصفحات لكل شخص بصرف النظر عن مسماه الوظيفي.</span></div></div><div class="access-list">${users.map(user => {
     const userBranches = access.branches[user.id] || [];
     const permissions = access.permissions[user.id] || defaultPermissions(user.role);
-    return `<form class="access-card" data-access-user="${user.id}"><div class="access-card-head"><div><span class="avatar">${escapeHtml(user.full_name?.[0] || 'م')}</span><div><b>${escapeHtml(user.full_name)}</b><small>@${escapeHtml(user.username || user.email?.split('@')[0] || '')} · ${user.role === 'admin' ? 'مدير' : 'موظف استقبال'}</small></div></div><button class="btn primary" type="submit">حفظ الصلاحيات</button></div><div class="access-columns"><div><h4>الفروع المسموحة</h4><div class="check-grid">${branches.map(branch => checkCard('branch_ids', branch.id, branch.name, userBranches.includes(branch.id))).join('')}</div></div><div><h4>الصفحات الظاهرة</h4><div class="check-grid pages">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !!permissions[key])).join('')}</div><h4 class="access-action-title">إجراءات السجلات</h4><div class="check-grid pages">${Object.entries(actionLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !!permissions[key])).join('')}</div></div></div></form>`;
+    return `<form class="access-card" data-access-user="${user.id}"><div class="access-card-head"><div><span class="avatar">${escapeHtml(user.full_name?.[0] || 'م')}</span><div><b>${escapeHtml(user.full_name)}</b><small>@${escapeHtml(user.username || user.email?.split('@')[0] || '')} · ${user.role === 'admin' ? 'مدير' : 'موظف استقبال'}</small></div></div><button class="btn primary" type="submit">حفظ الصلاحيات</button></div><div class="access-columns"><div><h4>الفروع المسموحة</h4><div class="check-grid">${branches.map(branch => checkCard('branch_ids', branch.id, branch.name, userBranches.includes(branch.id))).join('')}</div></div><div><h4>الصفحات الظاهرة</h4><div class="check-grid pages">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !!permissions[key])).join('')}</div><h4 class="access-action-title">الإجراءات وتقارير الجرد</h4><div class="check-grid pages">${Object.entries(actionLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !!permissions[key])).join('')}</div></div></div></form>`;
   }).join('')}</div></div>`;
   box.querySelectorAll('[data-access-user]').forEach(form => form.onsubmit = async event => {
     event.preventDefault();
@@ -92,7 +98,8 @@ async function permissionsTab(box) {
     const permissions = Object.fromEntries(Object.keys(accessLabels).map(key => [key, form.querySelector(`[name="permission_${key}"]`).checked]));
     if (!branchIds.length) return toast('يجب السماح بفرع واحد على الأقل', 'warning');
     if (!Object.values(permissions).some(Boolean)) return toast('يجب إظهار صفحة واحدة على الأقل', 'warning');
-    if ((permissions.edit_records || permissions.delete_records) && !permissions.records) return toast('فعّل صفحة إدارة السجلات مع صلاحية التعديل أو الحذف', 'warning');
+    const permissionError = validatePermissionDependencies(permissions);
+    if (permissionError) return toast(permissionError, 'warning');
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try { await saveAccess(userId, branchIds, permissions); toast('تم حفظ الفروع والصلاحيات'); }
@@ -107,19 +114,19 @@ function checkCard(name, value, label, checked) {
 
 function defaultPermissions(role) {
   const admin = role === 'admin';
-  return { home: true, consumption: true, additions: true, reports: true, records: admin, edit_records: admin, delete_records: admin, audit_logs: admin, settings: admin };
+  return { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: admin, reports: true, records: admin, edit_records: admin, delete_records: admin, settings: admin };
 }
 
 async function getAccessData(users) {
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('user_id,branch_id'),
-    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings'),
+    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_reports,can_records,can_edit_records,can_delete_records,can_settings'),
   ]);
   if (branchesResult.error) throw branchesResult.error;
   if (permissionsResult.error) throw permissionsResult.error;
   const branches = {};
   branchesResult.data.forEach(row => (branches[row.user_id] ??= []).push(row.branch_id));
-  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, audit_logs: row.can_audit_logs, settings: row.can_settings }]));
+  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings }]));
   return { branches, permissions };
 }
 
@@ -130,7 +137,7 @@ async function saveAccess(userId, branchIds, permissions) {
   if (branchError) throw branchError;
   const { error: profileError } = await supabase.from('users').update({ branch_id: branchIds[0] }).eq('id', userId);
   if (profileError) throw profileError;
-  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_audit_logs: permissions.audit_logs, can_settings: permissions.settings, updated_at: new Date().toISOString() });
+  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_inventory: permissions.inventory, can_inventory_reports: permissions.inventory_reports, can_inventory_all_reports: permissions.inventory_all_reports, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_settings: permissions.settings, updated_at: new Date().toISOString() });
   if (permissionError) throw permissionError;
   const current = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
   if (current?.id === userId) {
@@ -202,7 +209,7 @@ function normalizeEmployeeRow(row, rowNumber, branches) {
   const password = String(get('password', 'كلمة المرور', 'الباسورد') || '');
   const branchValues = splitList(get('branch_codes', 'branch_code', 'branch_name', 'الفروع', 'كود الفرع'));
   const roleValue = String(get('role', 'المسمى الوظيفي', 'الدور') || 'receptionist').trim().toLowerCase();
-  const permissionValues = splitList(get('permissions', 'الصفحات', 'صلاحيات الصفحات') || 'home,consumption,additions,reports').map(value => value.toLowerCase());
+  const permissionValues = splitList(get('permissions', 'الصفحات', 'صلاحيات الصفحات') || 'home,consumption,additions,inventory,reports').map(value => value.toLowerCase());
   const branchIds = branchValues.map(value => branches.find(item => item.code.toLowerCase() === value.toLowerCase() || item.name.toLowerCase() === value.toLowerCase())).filter(Boolean).map(branch => branch.id);
   const roleMap = { admin: 'admin', 'مدير': 'admin', receptionist: 'receptionist', reception: 'receptionist', 'استقبال': 'receptionist', 'موظف استقبال': 'receptionist' };
   if (!full_name) throw new Error(`الاسم ناقص في الصف ${rowNumber}`);
@@ -212,18 +219,26 @@ function normalizeEmployeeRow(row, rowNumber, branches) {
   if (!roleMap[roleValue]) throw new Error(`المسمى الوظيفي غير صحيح في الصف ${rowNumber}`);
   if (permissionValues.some(value => !accessLabels[value])) throw new Error(`يوجد مفتاح صلاحية غير صحيح في الصف ${rowNumber}`);
   const permissions = Object.fromEntries(Object.keys(accessLabels).map(key => [key, permissionValues.includes(key)]));
-  if ((permissions.edit_records || permissions.delete_records) && !permissions.records) throw new Error(`فعّل records مع edit_records أو delete_records في الصف ${rowNumber}`);
+  const permissionError = validatePermissionDependencies(permissions);
+  if (permissionError) throw new Error(`${permissionError} في الصف ${rowNumber}`);
   return { full_name, username, password, branch_id: branchIds[0], branch_ids: [...new Set(branchIds)], role: roleMap[roleValue], permissions };
 }
 
 function splitList(value) { return String(value || '').split(/[,;|]/).map(item => item.trim()).filter(Boolean); }
+
+function validatePermissionDependencies(permissions) {
+  if (permissions.inventory_reports && !permissions.inventory) return 'فعّل صفحة الجرد مع صلاحية تقارير الجرد';
+  if (permissions.inventory_all_reports && !permissions.inventory_reports) return 'فعّل تقارير الجرد مع صلاحية التقرير المجمع';
+  if ((permissions.edit_records || permissions.delete_records) && !permissions.records) return 'فعّل صفحة إدارة السجلات مع صلاحية التعديل أو الحذف';
+  return '';
+}
 
 async function temporaryMaterialsTab(box) {
   const [materials, users] = await Promise.all([list('materials'), list('users')]);
   const temporary = materials.filter(material => material.is_temp && !material.archived_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   const permanent = materials.filter(material => !material.is_temp && !material.archived_at).sort((a, b) => a.name.localeCompare(b.name));
   const userNames = Object.fromEntries(users.map(user => [user.id, user.full_name]));
-  box.innerHTML = `<div class="panel-body"><div class="settings-callout temp-review-callout"><div><b>مراجعة الأصناف المؤقتة</b><span>الصنف المؤقت يظهر فورًا لكل الموظفين ويمكن استخدامه في الصرف والإضافات. عند تعديله أو استبداله بعد استخدامه ستختار بين تحديث كل الحركات أو التطبيق من الآن فقط.</span></div><span class="badge temp">${temporary.length} مؤقت</span></div></div><div class="table-wrap">${temporary.length ? `<table class="data-table"><thead><tr><th>الصنف المؤقت</th><th>الكود الحالي</th><th>الوحدة</th><th>الفئة</th><th>أضيف بواسطة</th><th>تاريخ الإضافة</th><th>الإجراءات</th></tr></thead><tbody>${temporary.map(material => `<tr><td class="row-title">${escapeHtml(material.name)}</td><td>${escapeHtml(material.code)}</td><td>${escapeHtml(material.unit)}</td><td>${escapeHtml(material.category || '—')}</td><td>${escapeHtml(userNames[material.created_by] || 'غير مسجل')}</td><td>${material.created_at ? new Date(material.created_at).toLocaleString('ar-EG') : '—'}</td><td><div class="record-actions temp-actions"><button class="btn primary mini" data-review-temp="${material.id}">مراجعة واعتماد</button><button class="btn ghost mini" data-replace-temp="${material.id}">استبدال بالصنف الصحيح</button><button class="delete-icon" data-delete-temp="${material.id}" title="حذف">×</button></div></td></tr>`).join('')}</tbody></table>` : '<div class="empty-state"><b>✓</b>لا توجد أصناف مؤقتة تحتاج إلى مراجعة</div>'}</div>`;
+  box.innerHTML = `<div class="panel-body"><div class="settings-callout temp-review-callout"><div><b>مراجعة الأصناف المؤقتة</b><span>الصنف المؤقت يظهر فورًا لكل الموظفين ويمكن استخدامه في الصرف والإضافات. عند تعديله أو استبداله بعد استخدامه ستختار بين تحديث كل الحركات أو التطبيق من الآن فقط.</span></div><span class="badge temp">${temporary.length} مؤقت</span></div></div><div class="table-wrap">${temporary.length ? `<table class="data-table"><thead><tr><th>الصنف المؤقت</th><th>الكود الحالي</th><th>الوحدة</th><th>الفئة</th><th>أضيف بواسطة</th><th>تاريخ الإضافة</th><th>الإجراءات</th></tr></thead><tbody>${temporary.map(material => `<tr><td class="row-title">${escapeHtml(material.name)}</td><td>${escapeHtml(material.code)}</td><td>${escapeHtml(material.unit)}</td><td>${escapeHtml(material.category || '—')}</td><td>${escapeHtml(userNames[material.created_by] || 'غير مسجل')}</td><td>${material.created_at ? new Date(material.created_at).toLocaleString('ar-EG-u-nu-latn') : '—'}</td><td><div class="record-actions temp-actions"><button class="btn primary mini" data-review-temp="${material.id}">مراجعة واعتماد</button><button class="btn ghost mini" data-replace-temp="${material.id}">استبدال بالصنف الصحيح</button><button class="delete-icon" data-delete-temp="${material.id}" title="حذف">×</button></div></td></tr>`).join('')}</tbody></table>` : '<div class="empty-state"><b>✓</b>لا توجد أصناف مؤقتة تحتاج إلى مراجعة</div>'}</div>`;
   box.querySelectorAll('[data-review-temp]').forEach(button => button.onclick = () => openTemporaryReview(temporary.find(material => material.id === button.dataset.reviewTemp), box));
   box.querySelectorAll('[data-replace-temp]').forEach(button => button.onclick = () => openTemporaryReplacement(temporary.find(material => material.id === button.dataset.replaceTemp), permanent, box));
   box.querySelectorAll('[data-delete-temp]').forEach(button => button.onclick = async () => {
@@ -236,7 +251,7 @@ async function temporaryMaterialsTab(box) {
 
 function openTemporaryReview(material, box) {
   const root = document.getElementById('modal-root');
-  root.innerHTML = `<div class="modal-backdrop"><form class="modal"><button type="button" class="modal-x">×</button><h3>مراجعة الصنف المؤقت</h3><p>يمكنك تعديل البيانات وحفظه مؤقتًا، أو إدخال الكود الأصلي ثم اعتماده نهائيًا.</p><div class="form-grid two"><div class="field"><label>اسم الصنف <em>*</em><input name="name" value="${escapeHtml(material.name)}" required></label></div><div class="field"><label>الكود الأصلي <em>*</em><input name="code" value="${escapeHtml(material.code)}" required></label></div><div class="field"><label>الوحدة <em>*</em><input name="unit" value="${escapeHtml(material.unit)}" required></label></div><div class="field"><label>الفئة<input name="category" value="${escapeHtml(material.category || '')}"></label></div><div class="field"><label>إجمالي سعر البيع الافتراضي<input type="number" name="default_price" min="0" step="any" value="${Number(material.default_price || 0)}"></label></div></div><div class="modal-actions"><button type="button" class="btn ghost modal-cancel">إلغاء</button><button class="btn ghost" type="submit" data-mode="temporary">حفظ التعديل كمؤقت</button><button class="btn primary" type="submit" data-mode="approve">اعتماد الصنف نهائيًا</button></div></form></div>`;
+  root.innerHTML = `<div class="modal-backdrop"><form class="modal"><button type="button" class="modal-x">×</button><h3>مراجعة الصنف المؤقت</h3><p>يمكنك تعديل البيانات وحفظه مؤقتًا، أو إدخال الكود الأصلي ثم اعتماده نهائيًا.</p><div class="form-grid two"><div class="field"><label>اسم الصنف <em>*</em><input name="name" value="${escapeHtml(material.name)}" required></label></div><div class="field"><label>الكود الأصلي <em>*</em><input name="code" value="${escapeHtml(material.code)}" required></label></div><div class="field"><label>الوحدة <em>*</em><input name="unit" value="${escapeHtml(material.unit)}" required></label></div><div class="field"><label>الفئة<input name="category" value="${escapeHtml(material.category || '')}"></label></div><div class="field"><label>السعر الافتراضي<input type="number" name="default_price" min="0" step="any" value="${Number(material.default_price || 0)}"></label></div></div><div class="modal-actions"><button type="button" class="btn ghost modal-cancel">إلغاء</button><button class="btn ghost" type="submit" data-mode="temporary">حفظ التعديل كمؤقت</button><button class="btn primary" type="submit" data-mode="approve">اعتماد الصنف نهائيًا</button></div></form></div>`;
   const form = root.querySelector('form');
   const close = () => { root.innerHTML = ''; };
   root.querySelectorAll('.modal-x,.modal-cancel').forEach(button => button.onclick = close);
@@ -329,7 +344,7 @@ async function materialsTab(box) {
   box.innerHTML = `<div class="panel-body"><form id="material-form" class="form-grid"><div class="field"><label>اسم المادة<input name="name" required></label></div><div class="field"><label>الكود<input name="code" required></label></div><div class="field"><label>الوحدة<input name="unit" placeholder="ml / gm / Pack" required></label></div><div class="field"><label>الفئة<input name="category"></label></div><button class="btn primary">إضافة مادة</button></form><div class="field" style="margin-top:18px"><label>بحث<input id="material-filter" placeholder="ابحث بالاسم أو الكود أو الباركود أو الفئة"></label></div></div><div id="materials-table"></div>`;
   const draw = filter => {
     const shown = rows.filter(row => !filter || `${row.name} ${row.code} ${row.barcode} ${row.category}`.toLowerCase().includes(filter.toLowerCase()));
-    box.querySelector('#materials-table').innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr><th>المادة</th><th>الكود / الباركود</th><th>الوحدة</th><th>الفئة</th><th>إجمالي سعر البيع الافتراضي</th><th>الحالة</th><th></th></tr></thead><tbody>${shown.map(row => `<tr><td class="row-title">${escapeHtml(row.name)}</td><td>${escapeHtml(row.code)}<small class="row-sub">${escapeHtml(row.barcode || '—')}</small></td><td>${escapeHtml(row.unit)}</td><td>${escapeHtml(row.category || '—')}</td><td>${Number(row.default_price || 0).toLocaleString('ar-EG')}</td><td><span class="badge ${row.is_temp ? 'temp' : 'client'}">${row.is_temp ? 'مؤقت' : 'دائم'}</span></td><td><button class="delete-icon" data-delete="${row.id}">×</button></td></tr>`).join('')}</tbody></table></div>`;
+    box.querySelector('#materials-table').innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr><th>المادة</th><th>الكود / الباركود</th><th>الوحدة</th><th>الفئة</th><th>السعر</th><th>الحالة</th><th></th></tr></thead><tbody>${shown.map(row => `<tr><td class="row-title">${escapeHtml(row.name)}</td><td>${escapeHtml(row.code)}<small class="row-sub">${escapeHtml(row.barcode || '—')}</small></td><td>${escapeHtml(row.unit)}</td><td>${escapeHtml(row.category || '—')}</td><td>${Number(row.default_price || 0).toLocaleString('ar-EG-u-nu-latn')}</td><td><span class="badge ${row.is_temp ? 'temp' : 'client'}">${row.is_temp ? 'مؤقت' : 'دائم'}</span></td><td><button class="delete-icon" data-delete="${row.id}">×</button></td></tr>`).join('')}</tbody></table></div>`;
     wireDelete(box.querySelector('#materials-table'), 'materials', () => materialsTab(box), 'المادة');
   };
   draw('');

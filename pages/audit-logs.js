@@ -1,5 +1,5 @@
-import { escapeHtml, supabase, today, toast } from '../supabase.js';
-import { list } from '../data.js';
+import { escapeHtml, supabase, today, toast } from '../supabase.js?v=20260730-latin-digits';
+import { list } from '../data.js?v=20260730-latin-digits';
 
 const PAGE_SIZE = 25;
 const pageLabels = { consumption: 'صرف المواد', additions: 'الإضافات', records: 'إدارة السجلات', settings: 'الإعدادات' };
@@ -11,7 +11,8 @@ const fieldLabels = {
   transfer_to: 'الفرع المستلم', name: 'الاسم', code: 'الكود', barcode: 'الباركود', category: 'التصنيف',
   default_price: 'إجمالي سعر البيع الافتراضي', scope: 'نطاق الصنف', is_temp: 'صنف مؤقت', archived_at: 'حالة الأرشفة',
   full_name: 'الاسم الكامل', username: 'اسم المستخدم', email: 'البريد الإلكتروني', role: 'المسمى الوظيفي', user_id: 'المستخدم',
-  can_home: 'لوحة التحكم', can_consumption: 'صرف المواد', can_additions: 'الإضافات', can_reports: 'التقارير',
+  can_home: 'لوحة التحكم', can_consumption: 'صرف المواد', can_additions: 'الإضافات', can_inventory: 'الجرد',
+  can_inventory_reports: 'تقارير الجرد', can_inventory_all_reports: 'تقرير الجرد المجمع', can_reports: 'التقارير',
   can_records: 'إدارة السجلات', can_edit_records: 'تعديل السجلات', can_delete_records: 'حذف السجلات',
   can_audit_logs: 'سجل التعديلات', can_settings: 'الإعدادات',
 };
@@ -88,7 +89,7 @@ function drawRows(output, rows, lookup) {
 function auditRow(row, lookup) {
   const timestamp = new Date(row.occurred_at);
   const actor = row.actors?.full_name || row.actors?.username || 'النظام';
-  return `<tr><td><span class="row-title">${timestamp.toLocaleDateString('ar-EG')}</span><small class="row-sub">${timestamp.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</small></td>
+  return `<tr><td><span class="row-title">${timestamp.toLocaleDateString('ar-EG-u-nu-latn')}</span><small class="row-sub">${timestamp.toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</small></td>
     <td><span class="audit-user-dot">${escapeHtml(actor[0] || 'ن')}</span><span class="row-title">${escapeHtml(actor)}</span></td>
     <td><span class="row-title">${escapeHtml(pageLabels[row.page_key] || row.page_key)}</span><small class="row-sub">${escapeHtml(row.branches?.name || 'عام على النظام')}</small></td>
     <td><span class="audit-action ${row.action.toLowerCase()}">${actionLabels[row.action] || row.action}</span></td>
@@ -109,7 +110,7 @@ function openDetails(row, lookup) {
   const changes = visibleChanges(row);
   const detailRows = changes.length ? changes.map(change => `<div class="audit-detail-row"><b>${escapeHtml(fieldLabels[change.field] || change.field)}</b><div><span><small>قبل</small>${escapeHtml(displayValue(change.field, change.before, lookup))}</span><i>←</i><span class="after"><small>بعد</small>${escapeHtml(displayValue(change.field, change.after, lookup))}</span></div></div>`).join('') : `<div class="empty-state">${row.action === 'INSERT' ? 'تم إنشاء السجل' : row.action === 'DELETE' ? 'تم حذف السجل' : 'لا توجد قيم متغيرة للعرض'}</div>`;
   const timestamp = new Date(row.occurred_at);
-  root.innerHTML = `<div class="modal-backdrop"><div class="modal audit-modal"><button class="modal-x">×</button><p class="eyebrow">تفاصيل الحركة</p><h3>${escapeHtml(actionLabels[row.action])} ${escapeHtml(entityName(row, lookup))}</h3><div class="audit-modal-meta"><span><small>المستخدم</small>${escapeHtml(row.actors?.full_name || row.actors?.username || 'النظام')}</span><span><small>التاريخ والوقت</small>${timestamp.toLocaleString('ar-EG')}</span><span><small>الصفحة</small>${escapeHtml(pageLabels[row.page_key] || row.page_key)}</span><span><small>الفرع</small>${escapeHtml(row.branches?.name || 'عام على النظام')}</span></div><div class="audit-detail-list">${detailRows}</div><div class="modal-actions"><button class="btn primary modal-close">تم</button></div></div></div>`;
+  root.innerHTML = `<div class="modal-backdrop"><div class="modal audit-modal"><button class="modal-x">×</button><p class="eyebrow">تفاصيل الحركة</p><h3>${escapeHtml(actionLabels[row.action])} ${escapeHtml(entityName(row, lookup))}</h3><div class="audit-modal-meta"><span><small>المستخدم</small>${escapeHtml(row.actors?.full_name || row.actors?.username || 'النظام')}</span><span><small>التاريخ والوقت</small>${timestamp.toLocaleString('ar-EG-u-nu-latn')}</span><span><small>الصفحة</small>${escapeHtml(pageLabels[row.page_key] || row.page_key)}</span><span><small>الفرع</small>${escapeHtml(row.branches?.name || 'عام على النظام')}</span></div><div class="audit-detail-list">${detailRows}</div><div class="modal-actions"><button class="btn primary modal-close">تم</button></div></div></div>`;
   const close = () => { root.innerHTML = ''; };
   root.querySelector('.modal-x').onclick = close;
   root.querySelector('.modal-close').onclick = close;
