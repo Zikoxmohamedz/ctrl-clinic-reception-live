@@ -5,6 +5,7 @@ const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف الم�
 const actionLabels = {
   inventory_reports: 'عرض وتصدير تقارير الجرد',
   inventory_all_reports: 'تقرير الجرد المجمع لكل الفروع',
+  inventory_branch_activity: 'متابعة الفروع الشهرية',
   edit_records: 'تعديل السجلات',
   delete_records: 'حذف السجلات',
 };
@@ -114,19 +115,19 @@ function checkCard(name, value, label, checked) {
 
 function defaultPermissions(role) {
   const admin = role === 'admin';
-  return { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: admin, reports: true, records: admin, edit_records: admin, delete_records: admin, settings: admin };
+  return { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: admin, inventory_branch_activity: admin, reports: true, records: admin, edit_records: admin, delete_records: admin, settings: admin };
 }
 
 async function getAccessData(users) {
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('user_id,branch_id'),
-    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_reports,can_records,can_edit_records,can_delete_records,can_settings'),
+    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_settings'),
   ]);
   if (branchesResult.error) throw branchesResult.error;
   if (permissionsResult.error) throw permissionsResult.error;
   const branches = {};
   branchesResult.data.forEach(row => (branches[row.user_id] ??= []).push(row.branch_id));
-  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings }]));
+  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, inventory_branch_activity: row.can_inventory_branch_activity, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings }]));
   return { branches, permissions };
 }
 
@@ -137,7 +138,7 @@ async function saveAccess(userId, branchIds, permissions) {
   if (branchError) throw branchError;
   const { error: profileError } = await supabase.from('users').update({ branch_id: branchIds[0] }).eq('id', userId);
   if (profileError) throw profileError;
-  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_inventory: permissions.inventory, can_inventory_reports: permissions.inventory_reports, can_inventory_all_reports: permissions.inventory_all_reports, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_settings: permissions.settings, updated_at: new Date().toISOString() });
+  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_inventory: permissions.inventory, can_inventory_reports: permissions.inventory_reports, can_inventory_all_reports: permissions.inventory_all_reports, can_inventory_branch_activity: permissions.inventory_branch_activity, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_settings: permissions.settings, updated_at: new Date().toISOString() });
   if (permissionError) throw permissionError;
   const current = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
   if (current?.id === userId) {
@@ -229,6 +230,7 @@ function splitList(value) { return String(value || '').split(/[,;|]/).map(item =
 function validatePermissionDependencies(permissions) {
   if (permissions.inventory_reports && !permissions.inventory) return 'فعّل صفحة الجرد مع صلاحية تقارير الجرد';
   if (permissions.inventory_all_reports && !permissions.inventory_reports) return 'فعّل تقارير الجرد مع صلاحية التقرير المجمع';
+  if (permissions.inventory_branch_activity && !permissions.inventory) return 'فعّل صفحة الجرد مع صلاحية متابعة الفروع الشهرية';
   if ((permissions.edit_records || permissions.delete_records) && !permissions.records) return 'فعّل صفحة إدارة السجلات مع صلاحية التعديل أو الحذف';
   return '';
 }

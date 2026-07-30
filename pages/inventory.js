@@ -43,13 +43,13 @@ export async function renderInventory(root, profile) {
   });
 
   const canViewReports = hasInventoryReportPermission('inventory_reports');
-  const canViewAllBranches = hasInventoryReportPermission('inventory_all_reports');
+  const canViewBranchActivity = hasInventoryReportPermission('inventory_branch_activity');
   root.innerHTML = `<div class="page-intro"><div><h2>الجرد</h2><p>جرد مشترك لحظياً بين موظفي فرع ${escapeHtml(profile.branch_name)}.</p></div><button class="btn gold" id="inventory-temp-material">＋ إضافة صنف مؤقت</button></div>
     <section class="panel inventory-shell">
       <div class="tabs inventory-tabs">
         <button class="active" data-inventory-tab="current">الجرد الحالي</button>
         ${canViewReports ? '<button data-inventory-tab="reports">تقارير الجرد</button>' : ''}
-        ${canViewAllBranches ? '<button data-inventory-tab="activity">متابعة الفروع الشهرية</button>' : ''}
+        ${canViewBranchActivity ? '<button data-inventory-tab="activity">متابعة الفروع الشهرية</button>' : ''}
       </div>
       <div id="inventory-content"><div class="empty-state">جارٍ تحميل الأصناف...</div></div>
     </section>`;
@@ -814,7 +814,7 @@ async function renderReportsTab() {
 }
 
 async function renderMonthlyBranchActivity(monthValue = currentMonthValue()) {
-  if (!hasInventoryReportPermission('inventory_all_reports')) return toast('لا توجد صلاحية لمتابعة كل الفروع', 'warning');
+  if (!hasInventoryReportPermission('inventory_branch_activity')) return toast('لا توجد صلاحية لمتابعة كل الفروع', 'warning');
   cleanupInventory();
   const box = state.root.querySelector('#inventory-content');
   box.innerHTML = `<div class="inventory-report-head branch-activity-head"><div><h3>متابعة نشاط الفروع</h3><p>الجرد والصرف والإضافة لكل فرع خلال الشهر المحدد.</p></div><label>الشهر<input type="month" id="branch-activity-month" value="${escapeHtml(monthValue)}" required></label></div>
