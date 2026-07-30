@@ -1,10 +1,10 @@
 import './theme.js';
 import { supabase } from './supabase.js?v=20260730-latin-digits';
-import { renderConsumption } from './pages/consumption.js?v=20260730-temp-save-v2';
+import { renderConsumption } from './pages/consumption.js?v=20260730-sales-total-v11';
 import { renderAdditions } from './pages/additions.js?v=20260730-temp-save-v2';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260730-inventory-v9';
-import { renderReports } from './pages/reports.js?v=20260730-latin-digits';
-import { renderRecords } from './pages/records.js?v=20260730-latin-digits';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260730-sales-total-v11';
+import { renderReports } from './pages/reports.js?v=20260730-sales-total-v11';
+import { renderRecords } from './pages/records.js?v=20260730-sales-total-v11';
 import { renderSettings } from './pages/settings.js?v=20260730-inventory-report-permissions';
 import { list, hydrate } from './data.js?v=20260730-latin-digits';
 
@@ -106,7 +106,7 @@ async function home() {
   const [consumption, additions] = await Promise.all([list('consumption', { date }), list('additions', { date })]);
   const branchConsumption = consumption.filter(row => row.branch_id === profile.branch_id);
   const branchAdditions = additions.filter(row => row.branch_id === profile.branch_id);
-  const revenue = branchConsumption.reduce((sum, row) => sum + row.quantity * (row.selling_price || 0), 0);
+  const revenue = branchConsumption.reduce((sum, row) => sum + Number(row.total_selling_price ?? row.selling_price ?? 0), 0);
   content.innerHTML = `<section class="panel welcome"><div class="panel-body"><p class="eyebrow">${new Date().toLocaleDateString('ar-EG-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>أهلاً، ${profile.full_name.split(' ')[0]} 👋</h2><p>إليك ملخص حركة فرع ${profile.branch_name} اليوم.</p></div></section>
   <section class="stats-grid"><article class="stat-card"><span>عمليات الصرف اليوم</span><strong>${branchConsumption.length}</strong><i>◫</i></article><article class="stat-card"><span>إجمالي الكمية المصروفة</span><strong>${branchConsumption.reduce((sum, row) => sum + Number(row.quantity), 0)}</strong><i>−</i></article><article class="stat-card"><span>الإضافات اليوم</span><strong>${branchAdditions.length}</strong><i>＋</i></article><article class="stat-card"><span>إيراد اليوم</span><strong>${new Intl.NumberFormat('ar-EG-u-nu-latn').format(revenue)} <small>ج.م</small></strong><i>↗</i></article></section>
   <section class="quick-grid"><article class="panel"><div class="panel-head"><h3>إجراءات سريعة</h3></div><div class="panel-body quick-actions"><a href="#consumption"><b>◫</b>تسجيل صرف جديد</a><a href="#additions"><b>＋</b>تسجيل إضافة مخزون</a><a href="#reports"><b>⌁</b>عرض التقارير</a></div></article><article class="panel"><div class="panel-head"><h3>آخر الحركات</h3></div><div class="panel-body">${hydrate(branchConsumption).slice(-3).reverse().map(row => `<div class="summary-row"><span>${row.materials?.name}</span><b>${row.quantity} ${row.unit}</b><small>${new Date(row.created_at).toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</small></div>`).join('') || '<div class="empty-state">لا توجد حركات اليوم</div>'}</div></article></section>`;

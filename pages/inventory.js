@@ -43,11 +43,13 @@ export async function renderInventory(root, profile) {
   });
 
   const canViewReports = hasInventoryReportPermission('inventory_reports');
+  const canViewAllBranches = hasInventoryReportPermission('inventory_all_reports');
   root.innerHTML = `<div class="page-intro"><div><h2>الجرد</h2><p>جرد مشترك لحظياً بين موظفي فرع ${escapeHtml(profile.branch_name)}.</p></div><button class="btn gold" id="inventory-temp-material">＋ إضافة صنف مؤقت</button></div>
     <section class="panel inventory-shell">
       <div class="tabs inventory-tabs">
         <button class="active" data-inventory-tab="current">الجرد الحالي</button>
         ${canViewReports ? '<button data-inventory-tab="reports">تقارير الجرد</button>' : ''}
+        ${canViewAllBranches ? '<button data-inventory-tab="activity">متابعة الفروع الشهرية</button>' : ''}
       </div>
       <div id="inventory-content"><div class="empty-state">جارٍ تحميل الأصناف...</div></div>
     </section>`;
@@ -56,6 +58,7 @@ export async function renderInventory(root, profile) {
     button.onclick = async () => {
       root.querySelectorAll('[data-inventory-tab]').forEach(item => item.classList.toggle('active', item === button));
       if (button.dataset.inventoryTab === 'reports') await renderReportsTab();
+      else if (button.dataset.inventoryTab === 'activity') await renderMonthlyBranchActivity();
       else await renderCurrentTab();
     };
   });
@@ -808,6 +811,55 @@ async function renderReportsTab() {
   } catch (error) {
     showSetupError(error);
   }
+}
+
+async function renderMonthlyBranchActivity(monthValue = currentMonthValue()) {
+  if (!hasInventoryReportPermission('inventory_all_reports')) return toast('لا توجد صلاحية لمتابعة كل الفروع', 'warning');
+  cleanupInventory();
+  const box = state.root.querySelector('#inventory-content');
+  box.innerHTML = `<div class="inventory-report-head branch-activity-head"><div><h3>متابعة نشاط الفروع</h3><p>الجرد والصرف والإضافة لكل فرع خلال الشهر المحدد.</p></div><label>الشهر<input type="month" id="branch-activity-month" value="${escapeHtml(monthValue)}" required></label></div>
+    <div class="inventory-report-loading"><i></i><span>جارٍ مراجعة نشاط الفروع...</span></div>`;
+  const monthInput = box.querySelector('#branch-activity-month');
+  monthInput.onchange = () => monthInput.value && renderMonthlyBranchActivity(monthInput.value);
+
+  const { data, error } = await supabase.rpc('monthly_branch_activity', {
+    target_month: `${monthValue}-01`,
+  });
+  if (error) return showSetupError(error);
+
+  const rows = data || [];
+  const inventoryDone = rows.filter(row => row.inventory_completed).length;
+  const consumptionDone = rows.filter(row => row.consumption_done).length;
+  const additionsDone = rows.filter(row => row.additions_done).length;
+  const inactive = rows.filter(row => !row.inventory_completed && !row.consumption_done && !row.additions_done).length;
+  const status = (done, yes, no, count) => done
+    ? `<span class="branch-activity-status done">✓ ${yes}<small>${count} حركة</small></span>`
+    : `<span class="branch-activity-status missing">✕ ${no}</span>`;
+
+  box.innerHTML = `<div class="inventory-report-head branch-activity-head"><div><h3>متابعة نشاط الفروع</h3><p>الجرد والصرف والإضافة لكل فرع خلال ${escapeHtml(monthLabel(monthValue))}.</p></div><label>الشهر<input type="month" id="branch-activity-month" value="${escapeHtml(monthValue)}" required></label></div>
+    <div class="branch-activity-metrics">
+      <article><span>إجمالي الفروع</span><strong>${rows.length}</strong></article>
+      <article><span>أنهت الجرد</span><strong>${inventoryDone}</strong><small>لم تجرد: ${rows.length - inventoryDone}</small></article>
+      <article><span>عملت صرف</span><strong>${consumptionDone}</strong><small>بدون صرف: ${rows.length - consumptionDone}</small></article>
+      <article><span>عملت إضافة</span><strong>${additionsDone}</strong><small>بدون إضافة: ${rows.length - additionsDone}</small></article>
+      <article class="${inactive ? 'danger' : ''}"><span>بدون أي نشاط</span><strong>${inactive}</strong></article>
+    </div>
+    <div class="table-wrap branch-activity-table"><table class="data-table"><thead><tr><th>الفرع</th><th>الجرد خلال الشهر</th><th>الصرف خلال الشهر</th><th>الإضافة خلال الشهر</th><th>الحالة العامة</th></tr></thead><tbody>${rows.map(row => {
+      const allDone = row.inventory_completed && row.consumption_done && row.additions_done;
+      const noActivity = !row.inventory_completed && !row.consumption_done && !row.additions_done;
+      return `<tr class="${noActivity ? 'branch-no-activity' : ''}"><td class="row-title">${escapeHtml(row.branch_name)}</td><td>${status(row.inventory_completed, 'تم الجرد', 'لم يتم الجرد', row.inventory_count)}${row.latest_inventory_at ? `<small class="branch-activity-date">آخر إنهاء: ${formatDateTime(row.latest_inventory_at)}</small>` : ''}</td><td>${status(row.consumption_done, 'تم الصرف', 'لا يوجد صرف', row.consumption_count)}</td><td>${status(row.additions_done, 'تمت الإضافة', 'لا توجد إضافة', row.additions_count)}</td><td><span class="badge ${allDone ? 'client' : noActivity ? 'danger' : 'temp'}">${allDone ? 'مكتمل النشاط' : noActivity ? 'بدون نشاط' : 'نشاط ناقص'}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="5"><div class="empty-state">لا توجد فروع</div></td></tr>'}</tbody></table></div>`;
+  box.querySelector('#branch-activity-month').onchange = event => event.currentTarget.value && renderMonthlyBranchActivity(event.currentTarget.value);
+}
+
+function monthLabel(value) {
+  const [year, month] = String(value).split('-').map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString('ar-EG-u-nu-latn', { month: 'long', year: 'numeric' });
+}
+
+function currentMonthValue() {
+  const value = new Date();
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function drawReportSessions(box, sessions) {
