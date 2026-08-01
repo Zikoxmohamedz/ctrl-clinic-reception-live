@@ -385,8 +385,8 @@ function wireEntryInputs() {
         result.classList.remove('error');
         updateLocalTotal(card, materialId, quantity);
         if (!supply.checked) updateExpiryBalance(expiryBalance, batches, quantity, currentMode());
-        const expiryError = validateExpiryDraft(draft, quantity);
-        markInventoryCardError(card, expiryError);
+        const draftError = validateQuantityDraft(materialId, quantity) || validateExpiryDraft(draft, quantity, materialId);
+        markInventoryCardError(card, draftError);
         scheduleSave(materialId, card, draft, saveDelay);
       } catch (error) {
         const hasExpiryWork = batches.length > 1 || batches.some(batch => batch.expiration_date || batch.quantity_expression);
@@ -523,22 +523,35 @@ function markInventoryCardError(card, message = '') {
   }
 }
 
-function validateExpiryDraft(draft, totalQuantity) {
+function inventoryMaterialName(materialId) {
+  return state.materials.find(material => material.id === materialId)?.name || 'الصنف المحدد';
+}
+
+function inventoryError(materialId, message) {
+  return `الصنف «${inventoryMaterialName(materialId)}»: ${message}`;
+}
+
+function validateQuantityDraft(materialId, quantity) {
+  if (quantity > 0) return null;
+  return inventoryError(materialId, 'الكمية المكتوبة صفر. اكتب كمية أكبر من صفر، أو امسح الخانة لو مش هتجرد الصنف.');
+}
+
+function validateExpiryDraft(draft, totalQuantity, materialId) {
   if (draft.isSupply) return null;
-  if (!Array.isArray(draft.batches) || !draft.batches.length) return 'أضف تاريخ صلاحية واحدًا على الأقل';
+  if (!Array.isArray(draft.batches) || !draft.batches.length) return inventoryError(materialId, 'أضف تاريخ صلاحية واحدًا على الأقل، أو اختر «مستلزمات — بدون صلاحية».');
   let allocated = 0;
   for (const batch of draft.batches) {
-    if (!batch.expiration_date) return 'يوجد تاريخ صلاحية غير مكتوب';
+    if (!batch.expiration_date) return inventoryError(materialId, 'تاريخ الصلاحية ناقص. اكتب التاريخ، أو اختر «مستلزمات — بدون صلاحية» لو الصنف ملوش صلاحية.');
     try {
       batch.quantity = draft.expiryMode === 'all' ? totalQuantity : evaluateExpression(batch.quantity_expression);
     } catch {
-      return 'راجع كمية أحد تواريخ الصلاحية';
+      return inventoryError(materialId, 'راجع كمية أحد تواريخ الصلاحية.');
     }
-    if (!(batch.quantity > 0)) return 'كمية كل تاريخ صلاحية يجب أن تكون أكبر من صفر';
+    if (!(batch.quantity > 0)) return inventoryError(materialId, 'كمية كل تاريخ صلاحية يجب أن تكون أكبر من صفر.');
     allocated += Number(batch.quantity);
   }
   if (Math.abs(allocated - totalQuantity) > 0.000001) {
-    return `مجموع كميات الصلاحية ${money(allocated)} ويجب أن يساوي إجمالي الصنف ${money(totalQuantity)}`;
+    return inventoryError(materialId, `مجموع كميات الصلاحية ${money(allocated)} ويجب أن يساوي إجمالي الصنف ${money(totalQuantity)}.`);
   }
   return null;
 }
@@ -554,15 +567,16 @@ function scheduleSave(materialId, card, draft, delay = 500) {
   clearTimeout(state.saveTimers.get(materialId));
   const status = card.querySelector('[data-entry-status]');
   if (!draft.expression.trim()) {
+    markInventoryCardError(card, '');
     status.textContent = 'اكتب الكمية أو العملية الحسابية';
     status.className = 'inventory-save-state';
     return;
   }
   const quantity = evaluateExpression(draft.expression);
-  const expiryError = validateExpiryDraft(draft, quantity);
-  if (expiryError) {
-    markInventoryCardError(card, expiryError);
-    status.textContent = expiryError;
+  const draftError = validateQuantityDraft(materialId, quantity) || validateExpiryDraft(draft, quantity, materialId);
+  if (draftError) {
+    markInventoryCardError(card, draftError);
+    status.textContent = draftError;
     status.className = 'inventory-save-state error';
     return;
   }
@@ -580,8 +594,8 @@ async function saveEntry(materialId, card, draft, rethrow = false) {
   let uploadedImagePath = null;
   try {
     const quantity = evaluateExpression(draft.expression);
-    const expiryError = validateExpiryDraft(draft, quantity);
-    if (expiryError) throw new Error(expiryError);
+    const draftError = validateQuantityDraft(materialId, quantity) || validateExpiryDraft(draft, quantity, materialId);
+    if (draftError) throw new Error(draftError);
     const expiryBatches = draft.isSupply ? [] : draft.batches.map(batch => ({
       expiration_date: batch.expiration_date,
       quantity_expression: batch.quantity_expression,
@@ -696,15 +710,17 @@ function validateDrafts() {
     const card = state.root.querySelector(`[data-material-id="${materialId}"]`);
     if (!draft.expression.trim()) {
       const hasExpiryWork = draft.batches?.length > 1 || draft.batches?.some(batch => batch.expiration_date || batch.quantity_expression);
-      if (hasExpiryWork) return { card, message: 'اكتب إجمالي كمية الصنف أولًا', target: card.querySelector('[data-entry-expression]') };
+      if (hasExpiryWork) return { card, message: inventoryError(materialId, 'اكتب إجمالي كمية الصنف أولًا.'), target: card.querySelector('[data-entry-expression]') };
       continue;
     }
     try {
       const quantity = evaluateExpression(draft.expression);
-      const expiryError = validateExpiryDraft(draft, quantity);
+      const quantityError = validateQuantityDraft(materialId, quantity);
+      if (quantityError) return { card, message: quantityError, target: card.querySelector('[data-entry-expression]') };
+      const expiryError = validateExpiryDraft(draft, quantity, materialId);
       if (expiryError) return { card, message: expiryError, target: findInventoryErrorTarget(card, draft) };
     } catch (error) {
-      return { card, message: error.message, target: card.querySelector('[data-entry-expression]') };
+      return { card, message: inventoryError(materialId, error.message), target: card.querySelector('[data-entry-expression]') };
     }
   }
   return null;
@@ -746,16 +762,16 @@ async function flushPendingSaves() {
   state.saveTimers.clear();
   state.drafts.forEach((draft, materialId) => {
     const card = state.root.querySelector(`[data-material-id="${materialId}"]`);
-    if (card && draftReady(draft)) pending.push(saveEntry(materialId, card, draft, true));
+    if (card && draftReady(draft, materialId)) pending.push(saveEntry(materialId, card, draft, true));
   });
   await Promise.all(pending);
 }
 
-function draftReady(draft) {
+function draftReady(draft, materialId) {
   if (!draft?.expression.trim()) return false;
   try {
     const quantity = evaluateExpression(draft.expression);
-    return !validateExpiryDraft(draft, quantity);
+    return !validateQuantityDraft(materialId, quantity) && !validateExpiryDraft(draft, quantity, materialId);
   } catch {
     return false;
   }

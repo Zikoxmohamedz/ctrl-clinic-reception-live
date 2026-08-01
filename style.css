@@ -44,6 +44,14 @@
   background: var(--bg);
 }
 .addition-line-builder .search-wrap { min-width: 0; }
+.addition-line-builder.auto-add { grid-template-columns: minmax(260px, 1fr) minmax(190px, .42fr); }
+.addition-auto-hint {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: .72rem;
+  line-height: 1.6;
+}
 .addition-lines { margin-top: 16px; }
 .addition-empty {
   padding: 24px;
@@ -94,6 +102,7 @@
 .audit-detail-row small { display: block; color: var(--muted); }
 .audit-technical { margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
 .audit-technical code { display: block; margin-top: 8px; color: var(--muted); direction: ltr; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+.employee-account-actions { display: flex; flex-wrap: wrap; gap: 7px; min-width: 210px; }
 
 @media (max-width: 900px) {
   .addition-line-builder { grid-template-columns: 1fr 1fr; }
@@ -102,6 +111,7 @@
 }
 @media (max-width: 620px) {
   .addition-line-builder, .audit-filters, .audit-stats, .audit-modal-meta { grid-template-columns: 1fr; }
+  .addition-line-builder.auto-add { grid-template-columns: 1fr; }
   .addition-line-builder .search-wrap, .audit-search { grid-column: auto; }
   .addition-line-builder .btn { width: 100%; }
   .inventory-search { flex-wrap: wrap; }

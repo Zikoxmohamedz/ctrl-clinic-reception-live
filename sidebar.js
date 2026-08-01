@@ -1,12 +1,12 @@
 import './theme.js';
 import { supabase } from './supabase.js?v=20260801-audit-context';
 import { renderConsumption } from './pages/consumption.js?v=20260730-sales-total-v11';
-import { renderAdditions } from './pages/additions.js?v=20260801-multi-additions';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260801-category-filter';
+import { renderAdditions } from './pages/additions.js?v=20260801-auto-add-v2';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260801-clear-validation-v2';
 import { renderReports } from './pages/reports.js?v=20260730-sales-total-v11';
 import { renderRecords } from './pages/records.js?v=20260730-sales-total-v11';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260801-device-details';
-import { renderSettings } from './pages/settings.js?v=20260801-password-audit';
+import { renderSettings } from './pages/settings.js?v=20260801-employee-edit-v2';
 import { list, hydrate } from './data.js?v=20260801-reception-features';
 
 const profile = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');

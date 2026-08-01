@@ -62,7 +62,8 @@ async function usersTab(box) {
   <div class="table-wrap"><table class="data-table"><thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>المسمى</th><th>الفروع المسموحة</th><th>الصفحات</th><th>الحساب</th></tr></thead><tbody>${users.length ? users.map(user => {
     const branchNames = (access.branches[user.id] || []).map(id => branches.find(branch => branch.id === id)?.name).filter(Boolean);
     const allowedPages = Object.entries(access.permissions[user.id] || {}).filter(([key, allowed]) => allowed && accessLabels[key]).map(([key]) => accessLabels[key]);
-    return `<tr><td class="row-title">${escapeHtml(user.full_name)}</td><td><b>${escapeHtml(user.username || user.email?.split('@')[0] || '—')}</b></td><td><span class="badge ${user.role === 'admin' ? 'admin' : 'client'}">${user.role === 'admin' ? 'مدير' : 'استقبال'}</span></td><td><div class="chip-list">${branchNames.map(name => `<span>${escapeHtml(name)}</span>`).join('')}</div></td><td>${escapeHtml(allowedPages.join('، ') || 'بدون صفحات')}</td><td><button type="button" class="btn ghost mini" data-change-password="${user.id}" data-user-name="${escapeHtml(user.full_name)}">تغيير الباسورد</button></td></tr>`;
+    const username = user.username || user.email?.split('@')[0] || '';
+    return `<tr><td class="row-title">${escapeHtml(user.full_name)}</td><td><b>${escapeHtml(username || '—')}</b></td><td><span class="badge ${user.role === 'admin' ? 'admin' : 'client'}">${user.role === 'admin' ? 'مدير' : 'استقبال'}</span></td><td><div class="chip-list">${branchNames.map(name => `<span>${escapeHtml(name)}</span>`).join('')}</div></td><td>${escapeHtml(allowedPages.join('، ') || 'بدون صفحات')}</td><td><div class="employee-account-actions"><button type="button" class="btn ghost mini" data-edit-employee="${user.id}" data-user-name="${escapeHtml(user.full_name)}" data-username="${escapeHtml(username)}">تعديل الاسم واليوزر</button><button type="button" class="btn ghost mini" data-change-password="${user.id}" data-user-name="${escapeHtml(user.full_name)}">تغيير الباسورد</button></div></td></tr>`;
   }).join('') : '<tr><td colspan="6"><div class="empty-state">لا يوجد موظفون بعد</div></td></tr>'}</tbody></table></div>`;
 
   box.querySelector('#user-form').onsubmit = async event => {
@@ -82,6 +83,7 @@ async function usersTab(box) {
   };
   box.querySelector('#download-users-template').onclick = () => downloadUsersTemplate(branches);
   box.querySelector('#users-import-file').onchange = event => importUsersWorkbook(event.target.files[0], branches, box);
+  box.querySelectorAll('[data-edit-employee]').forEach(button => button.onclick = () => openEmployeeModal(button.dataset.editEmployee, button.dataset.userName, button.dataset.username, () => usersTab(box)));
   box.querySelectorAll('[data-change-password]').forEach(button => button.onclick = () => openPasswordModal(button.dataset.changePassword, button.dataset.userName));
 }
 
@@ -156,6 +158,34 @@ async function createUser(payload) {
   if (error) throw new Error(data?.error || error.message || 'تعذر إنشاء المستخدم');
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+function openEmployeeModal(userId, currentName, currentUsername, onSaved) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-backdrop"><form class="modal small employee-edit-modal"><button type="button" class="modal-x">×</button><p class="eyebrow">إدارة حساب الموظف</p><h3>تعديل بيانات الموظف</h3><p>تغيير اسم المستخدم سيغيّر الاسم الذي يدخل به الموظف في المرة القادمة.</p><div class="field"><label>اسم الموظف <em>*</em><input name="full_name" value="${escapeHtml(currentName)}" required></label></div><div class="field"><label>اسم المستخدم <em>*</em><input name="username" value="${escapeHtml(currentUsername)}" minlength="3" maxlength="32" pattern="[A-Za-z0-9._-]+" autocomplete="off" required><small>حروف إنجليزية وأرقام و . _ - فقط</small></label></div><div class="modal-actions"><button type="button" class="btn ghost modal-cancel">إلغاء</button><button class="btn primary" type="submit">حفظ التعديل</button></div></form></div>`;
+  const form = root.querySelector('form');
+  const close = () => { root.innerHTML = ''; };
+  root.querySelector('.modal-x').onclick = close;
+  root.querySelector('.modal-cancel').onclick = close;
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const fullName = form.full_name.value.trim();
+    const username = form.username.value.trim().toLowerCase();
+    if (!fullName) return toast('اكتب اسم الموظف', 'warning');
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      const { data, error } = await supabase.functions.invoke('invite-user', { body: { action: 'update_user', user_id: userId, full_name: fullName, username } });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'تعذر تعديل بيانات الموظف');
+      close();
+      toast('تم تعديل اسم الموظف واسم المستخدم');
+      await onSaved?.();
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+    }
+  };
+  form.full_name.focus();
 }
 
 function openPasswordModal(userId, userName) {
