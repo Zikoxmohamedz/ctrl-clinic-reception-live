@@ -1,12 +1,13 @@
 import './theme.js';
-import { supabase } from './supabase.js?v=20260730-latin-digits';
+import { supabase } from './supabase.js?v=20260801-audit-context';
 import { renderConsumption } from './pages/consumption.js?v=20260730-sales-total-v11';
-import { renderAdditions } from './pages/additions.js?v=20260730-temp-save-v2';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260730-branch-access-v12';
+import { renderAdditions } from './pages/additions.js?v=20260801-multi-additions';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260801-category-filter';
 import { renderReports } from './pages/reports.js?v=20260730-sales-total-v11';
 import { renderRecords } from './pages/records.js?v=20260730-sales-total-v11';
-import { renderSettings } from './pages/settings.js?v=20260730-branch-access-v12';
-import { list, hydrate } from './data.js?v=20260730-latin-digits';
+import { renderAuditLogs } from './pages/audit-logs.js?v=20260801-device-details';
+import { renderSettings } from './pages/settings.js?v=20260801-password-audit';
+import { list, hydrate } from './data.js?v=20260801-reception-features';
 
 const profile = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
 if (!profile || !supabase) {
@@ -26,22 +27,22 @@ async function refreshCurrentAccess() {
   if (!supabase) return;
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('branch_id').eq('user_id', profile.id),
-    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_settings').eq('user_id', profile.id).single(),
+    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings').eq('user_id', profile.id).single(),
   ]);
   if (!branchesResult.error && branchesResult.data.length) profile.branch_ids = branchesResult.data.map(row => row.branch_id);
   if (!permissionsResult.error) {
     const row = permissionsResult.data;
-    profile.permissions = { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, inventory_branch_activity: row.can_inventory_branch_activity, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings };
+    profile.permissions = { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, inventory_branch_activity: row.can_inventory_branch_activity, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, audit_logs: row.can_audit_logs, settings: row.can_settings };
   }
   sessionStorage.setItem('ctrl_profile', JSON.stringify(profile));
 }
 
 await refreshCurrentAccess();
 
-const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
+const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
 const content = document.getElementById('app-content');
 const sidebar = document.getElementById('sidebar');
-const permissions = profile.permissions || { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: profile.role === 'admin', inventory_branch_activity: profile.role === 'admin', reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', settings: profile.role === 'admin' };
+const permissions = profile.permissions || { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: profile.role === 'admin', inventory_branch_activity: profile.role === 'admin', reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', audit_logs: profile.role === 'admin', settings: profile.role === 'admin' };
 
 document.querySelectorAll('[data-user-name]').forEach(item => item.textContent = profile?.full_name || '');
 document.querySelectorAll('[data-branch-name]').forEach(item => item.textContent = profile?.branch_name || '');
@@ -129,6 +130,7 @@ async function route() {
     if (name === 'inventory') await renderInventory(content, profile);
     if (name === 'reports') await renderReports(content, profile);
     if (name === 'records') await renderRecords(content, profile);
+    if (name === 'audit_logs') await renderAuditLogs(content, profile);
     if (name === 'settings') await renderSettings(content, profile);
     content.focus();
   } catch (error) {

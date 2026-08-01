@@ -1,9 +1,9 @@
-import { escapeHtml, supabase, today, toast } from '../supabase.js?v=20260730-latin-digits';
-import { list } from '../data.js?v=20260730-latin-digits';
+import { escapeHtml, supabase, today, toast } from '../supabase.js?v=20260801-audit-context';
+import { list } from '../data.js?v=20260801-reception-features';
 
 const PAGE_SIZE = 25;
-const pageLabels = { consumption: 'صرف المواد', additions: 'الإضافات', records: 'إدارة السجلات', settings: 'الإعدادات' };
-const tableLabels = { consumption_records: 'سجل صرف', stock_additions: 'سجل إضافة', materials: 'صنف', branches: 'فرع', users: 'مستخدم', user_branches: 'فروع المستخدم', user_permissions: 'صلاحيات المستخدم' };
+const pageLabels = { consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
+const tableLabels = { consumption_records: 'سجل صرف', stock_additions: 'سجل إضافة', materials: 'صنف', branches: 'فرع', users: 'مستخدم', auth_users: 'حساب مستخدم', user_branches: 'فروع المستخدم', user_permissions: 'صلاحيات المستخدم' };
 const actionLabels = { INSERT: 'إضافة', UPDATE: 'تعديل', DELETE: 'حذف' };
 const fieldLabels = {
   quantity: 'الكمية', selling_price: 'إجمالي سعر البيع', date: 'التاريخ', material_id: 'الصنف', branch_id: 'الفرع',
@@ -14,7 +14,7 @@ const fieldLabels = {
   can_home: 'لوحة التحكم', can_consumption: 'صرف المواد', can_additions: 'الإضافات', can_inventory: 'الجرد',
   can_inventory_reports: 'تقارير الجرد', can_inventory_all_reports: 'تقرير الجرد المجمع', can_reports: 'التقارير',
   can_records: 'إدارة السجلات', can_edit_records: 'تعديل السجلات', can_delete_records: 'حذف السجلات',
-  can_audit_logs: 'سجل التعديلات', can_settings: 'الإعدادات',
+  can_audit_logs: 'سجل التعديلات', can_settings: 'الإعدادات', password: 'كلمة المرور', document_id: 'رقم إذن الإضافة',
 };
 let currentPage = 1;
 
@@ -81,7 +81,7 @@ function drawRows(output, rows, lookup) {
   const deleted = rows.filter(row => row.action === 'DELETE').length;
   output.innerHTML = `<section class="audit-stats"><article><span>إجمالي الحركات</span><strong>${rows.length}</strong></article><article class="audit-stat-update"><span>تعديلات</span><strong>${updated}</strong></article><article class="audit-stat-delete"><span>حذف</span><strong>${deleted}</strong></article></section>
   <section class="panel audit-results"><div class="panel-head"><div><h3>الحركات المسجلة</h3><p>${rows.length ? `يعرض الأحدث أولًا · ${rows.length} حركة` : 'لا توجد حركات مطابقة للفلاتر المختارة'}</p></div><span class="audit-lock">لا يمكن التعديل أو الحذف</span></div>
-  <div class="table-wrap">${rows.length ? `<table class="data-table audit-table"><thead><tr><th>التاريخ والوقت</th><th>المستخدم</th><th>الصفحة</th><th>الإجراء</th><th>السجل</th><th>تفاصيل التغيير</th><th></th></tr></thead><tbody>${visible.map(row => auditRow(row, lookup)).join('')}</tbody></table>` : '<div class="empty-state"><b>—</b>لا توجد تعديلات في الفترة المختارة</div>'}</div>${pagination(rows.length, pages)}</section>`;
+  <div class="table-wrap">${rows.length ? `<table class="data-table audit-table"><thead><tr><th>التاريخ والوقت</th><th>المستخدم</th><th>الجهاز</th><th>الصفحة</th><th>الإجراء</th><th>السجل</th><th>تفاصيل التغيير</th><th></th></tr></thead><tbody>${visible.map(row => auditRow(row, lookup)).join('')}</tbody></table>` : '<div class="empty-state"><b>—</b>لا توجد تعديلات في الفترة المختارة</div>'}</div>${pagination(rows.length, pages)}</section>`;
   output.querySelectorAll('[data-audit-details]').forEach(button => button.onclick = () => openDetails(rows.find(item => String(item.id) === button.dataset.auditDetails), lookup));
   output.querySelectorAll('[data-audit-page]').forEach(button => button.onclick = () => { currentPage = Number(button.dataset.auditPage); drawRows(output, rows, lookup); });
 }
@@ -91,6 +91,7 @@ function auditRow(row, lookup) {
   const actor = row.actors?.full_name || row.actors?.username || 'النظام';
   return `<tr><td><span class="row-title">${timestamp.toLocaleDateString('ar-EG-u-nu-latn')}</span><small class="row-sub">${timestamp.toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' })}</small></td>
     <td><span class="audit-user-dot">${escapeHtml(actor[0] || 'ن')}</span><span class="row-title">${escapeHtml(actor)}</span></td>
+    <td>${deviceSummary(row)}</td>
     <td><span class="row-title">${escapeHtml(pageLabels[row.page_key] || row.page_key)}</span><small class="row-sub">${escapeHtml(row.branches?.name || 'عام على النظام')}</small></td>
     <td><span class="audit-action ${row.action.toLowerCase()}">${actionLabels[row.action] || row.action}</span></td>
     <td>${escapeHtml(entityName(row, lookup))}<small class="row-sub">${escapeHtml(tableLabels[row.table_name] || row.table_name)}</small></td>
@@ -110,7 +111,7 @@ function openDetails(row, lookup) {
   const changes = visibleChanges(row);
   const detailRows = changes.length ? changes.map(change => `<div class="audit-detail-row"><b>${escapeHtml(fieldLabels[change.field] || change.field)}</b><div><span><small>قبل</small>${escapeHtml(displayValue(change.field, change.before, lookup))}</span><i>←</i><span class="after"><small>بعد</small>${escapeHtml(displayValue(change.field, change.after, lookup))}</span></div></div>`).join('') : `<div class="empty-state">${row.action === 'INSERT' ? 'تم إنشاء السجل' : row.action === 'DELETE' ? 'تم حذف السجل' : 'لا توجد قيم متغيرة للعرض'}</div>`;
   const timestamp = new Date(row.occurred_at);
-  root.innerHTML = `<div class="modal-backdrop"><div class="modal audit-modal"><button class="modal-x">×</button><p class="eyebrow">تفاصيل الحركة</p><h3>${escapeHtml(actionLabels[row.action])} ${escapeHtml(entityName(row, lookup))}</h3><div class="audit-modal-meta"><span><small>المستخدم</small>${escapeHtml(row.actors?.full_name || row.actors?.username || 'النظام')}</span><span><small>التاريخ والوقت</small>${timestamp.toLocaleString('ar-EG-u-nu-latn')}</span><span><small>الصفحة</small>${escapeHtml(pageLabels[row.page_key] || row.page_key)}</span><span><small>الفرع</small>${escapeHtml(row.branches?.name || 'عام على النظام')}</span></div><div class="audit-detail-list">${detailRows}</div><div class="modal-actions"><button class="btn primary modal-close">تم</button></div></div></div>`;
+  root.innerHTML = `<div class="modal-backdrop"><div class="modal audit-modal"><button class="modal-x">×</button><p class="eyebrow">تفاصيل الحركة</p><h3>${escapeHtml(actionLabels[row.action])} ${escapeHtml(entityName(row, lookup))}</h3><div class="audit-modal-meta"><span><small>المستخدم</small>${escapeHtml(row.actors?.full_name || row.actors?.username || 'النظام')}</span><span><small>التاريخ والوقت</small>${timestamp.toLocaleString('ar-EG-u-nu-latn')}</span><span><small>الصفحة</small>${escapeHtml(pageLabels[row.page_key] || row.page_key)}</span><span><small>الفرع</small>${escapeHtml(row.branches?.name || 'عام على النظام')}</span><span><small>نوع الجهاز</small>${escapeHtml(deviceDetails(row).type)}</span><span><small>المتصفح والنظام</small>${escapeHtml(deviceDetails(row).browserOs)}</span><span><small>عنوان الشبكة IP</small>${escapeHtml(row.ip_address || 'غير متاح')}</span><span><small>جلسة الجهاز</small>${escapeHtml(row.session_id || 'غير متاحة')}</span></div>${row.user_agent ? `<details class="audit-technical"><summary>بيانات الجهاز الكاملة</summary><code>${escapeHtml(row.user_agent)}</code></details>` : ''}<div class="audit-detail-list">${detailRows}</div><div class="modal-actions"><button class="btn primary modal-close">تم</button></div></div></div>`;
   const close = () => { root.innerHTML = ''; };
   root.querySelector('.modal-x').onclick = close;
   root.querySelector('.modal-close').onclick = close;
@@ -127,7 +128,7 @@ function entityName(row, lookup) {
     return data.client_name ? `${material} · ${data.client_name}` : material;
   }
   if (['materials', 'branches'].includes(row.table_name)) return data.name || tableLabels[row.table_name];
-  if (row.table_name === 'users') return data.full_name || data.username || 'مستخدم';
+  if (row.table_name === 'users' || row.table_name === 'auth_users') return data.full_name || data.username || 'مستخدم';
   if (['user_permissions', 'user_branches'].includes(row.table_name)) return lookup.users.get(data.user_id) || 'مستخدم';
   return tableLabels[row.table_name] || 'سجل';
 }
@@ -142,7 +143,21 @@ function displayValue(field, value, lookup) {
   return String(value);
 }
 function searchText(row, lookup) {
-  return [row.actors?.full_name, row.actors?.username, row.branches?.name, pageLabels[row.page_key], actionLabels[row.action], entityName(row, lookup), ...visibleChanges(row).flatMap(change => [fieldLabels[change.field], displayValue(change.field, change.before, lookup), displayValue(change.field, change.after, lookup)])].filter(Boolean).join(' ');
+  return [row.actors?.full_name, row.actors?.username, row.branches?.name, row.ip_address, row.device_type, row.client_platform, row.user_agent, pageLabels[row.page_key], actionLabels[row.action], entityName(row, lookup), ...visibleChanges(row).flatMap(change => [fieldLabels[change.field], displayValue(change.field, change.before, lookup), displayValue(change.field, change.after, lookup)])].filter(Boolean).join(' ');
+}
+
+function deviceDetails(row) {
+  const ua = String(row.user_agent || '');
+  const typeKey = row.device_type || (/iPad|Tablet/i.test(ua) ? 'tablet' : /Android|iPhone|Mobile/i.test(ua) ? 'mobile' : ua ? 'desktop' : 'unknown');
+  const type = { mobile: 'موبايل', tablet: 'تابلت', desktop: 'كمبيوتر', unknown: 'غير متاح' }[typeKey] || typeKey;
+  const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'متصفح غير معروف';
+  const os = /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : row.client_platform || 'نظام غير معروف';
+  return { type, browserOs: ua ? `${browser} · ${os}` : 'غير متاح' };
+}
+
+function deviceSummary(row) {
+  const details = deviceDetails(row);
+  return `<span class="row-title">${escapeHtml(details.type)}</span><small class="row-sub">${escapeHtml(details.browserOs)}</small><small class="row-sub">${escapeHtml(row.ip_address || 'IP غير متاح')}</small>`;
 }
 function normalize(value) {
   return String(value || '').toLocaleLowerCase('ar').normalize('NFKD').replace(/\p{M}/gu, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').trim();

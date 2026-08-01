@@ -1,5 +1,5 @@
-import { today, toast, escapeHtml, money, confirmDialog } from '../supabase.js?v=20260730-latin-digits';
-import { list, hydrate, update, remove } from '../data.js?v=20260730-latin-digits';
+import { today, toast, escapeHtml, money, confirmDialog } from '../supabase.js?v=20260801-audit-context';
+import { list, hydrate, update, remove } from '../data.js?v=20260801-reception-features';
 
 const PAGE_SIZE = 20;
 let currentPage = 1;

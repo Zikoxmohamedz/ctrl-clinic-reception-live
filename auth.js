@@ -1,4 +1,4 @@
-import { supabase, isConfigured } from './supabase.js?v=20260730-latin-digits';
+import { supabase, isConfigured } from './supabase.js?v=20260801-audit-context';
 
 const form = document.getElementById('login-form');
 const errorBox = document.getElementById('login-error');
@@ -36,7 +36,7 @@ form?.addEventListener('submit', async event => {
   const [profileResult, branchesResult, permissionsResult] = await Promise.all([
     supabase.from('users').select('id,full_name,username,email,branch_id,role').eq('id', userId).single(),
     supabase.from('user_branches').select('branch_id,branches(name,code)').eq('user_id', userId),
-    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_settings').eq('user_id', userId).single(),
+    supabase.from('user_permissions').select('can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings').eq('user_id', userId).single(),
   ]);
   if (profileResult.error || branchesResult.error || permissionsResult.error) {
     await supabase.auth.signOut();
@@ -74,6 +74,7 @@ form?.addEventListener('submit', async event => {
       records: permissionRow.can_records,
       edit_records: permissionRow.can_edit_records,
       delete_records: permissionRow.can_delete_records,
+      audit_logs: permissionRow.can_audit_logs,
       settings: permissionRow.can_settings,
     },
   }));

@@ -1,5 +1,5 @@
-import { supabase, escapeHtml, toast, money, confirmDialog } from '../supabase.js?v=20260730-latin-digits';
-import { insert, list } from '../data.js?v=20260730-latin-digits';
+import { supabase, escapeHtml, toast, money, confirmDialog } from '../supabase.js?v=20260801-audit-context';
+import { insert, list } from '../data.js?v=20260801-reception-features';
 import { openTemporaryMaterial } from './temp-material.js?v=20260730-temp-save-v2';
 
 const state = {
@@ -15,6 +15,7 @@ const state = {
   reportSessions: null,
   reportLoadPromise: null,
   filter: '',
+  category: '',
   ignoreOwnEntryEventsUntil: 0,
 };
 
@@ -39,6 +40,7 @@ export async function renderInventory(root, profile) {
     reportSessions: null,
     reportLoadPromise: null,
     filter: '',
+    category: '',
     ignoreOwnEntryEventsUntil: 0,
   });
 
@@ -169,14 +171,16 @@ function drawInventory(snapshot, joined) {
 }
 
 function inventorySearch() {
+  const categories = [...new Set(state.materials.map(material => String(material.category || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar'));
   return `<div class="inventory-search">
     <label><span>البحث السريع في الأصناف</span><input id="inventory-search" type="search" autocomplete="off" value="${escapeHtml(state.filter)}" placeholder="اكتب أول كام حرف من اسم الصنف أو الكود"></label>
+    <label class="inventory-category-filter"><span>فلتر الفئة</span><select id="inventory-category"><option value="">كل الفئات</option>${categories.map(category => `<option value="${escapeHtml(category)}" ${state.category === category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}</select></label>
     <b id="inventory-result-count">${state.materials.length} صنف</b>
   </div>`;
 }
 
 function inventoryPreviewCard(material) {
-  return `<article class="inventory-item" data-material-card data-search="${escapeHtml(normalize(`${material.name} ${material.code} ${material.category || ''}`))}">
+  return `<article class="inventory-item" data-material-card data-category="${escapeHtml(material.category || '')}" data-search="${escapeHtml(normalize(`${material.name} ${material.code} ${material.category || ''}`))}">
     <div class="inventory-item-head"><div><strong>${escapeHtml(material.name)}</strong><small>${escapeHtml(material.code)} · ${escapeHtml(material.category || 'بدون فئة')}</small></div><span>${escapeHtml(material.unit)}</span></div>
     <div class="inventory-preview-fields"><span>الكمية</span><span>الصلاحية / مستلزمات</span><span>الإجمالي</span></div>
   </article>`;
@@ -236,7 +240,7 @@ function inventoryCard(material, entries, canEdit) {
   let result = '';
   try { if (expression) result = evaluateExpression(expression); } catch {}
 
-  return `<article class="inventory-item" data-material-card data-material-id="${material.id}" data-search="${escapeHtml(normalize(`${material.name} ${material.code} ${material.category || ''}`))}">
+  return `<article class="inventory-item" data-material-card data-material-id="${material.id}" data-category="${escapeHtml(material.category || '')}" data-search="${escapeHtml(normalize(`${material.name} ${material.code} ${material.category || ''}`))}">
     <div class="inventory-item-head"><div><strong>${escapeHtml(material.name)}</strong><small>${escapeHtml(material.code)} · ${escapeHtml(material.category || 'بدون فئة')}</small></div><span>${escapeHtml(material.unit)}</span></div>
     <div class="inventory-contributions">
       ${contributions.length ? contributions.map(entry => `<span class="${entry.created_by === state.profile.id ? 'mine' : ''}"><b>${escapeHtml(entry.created_by_name)}</b> جرد <strong>${money(entry.quantity)}</strong><small>${escapeHtml(entry.quantity_expression)}${entry.is_supply ? ' · مستلزمات' : ` · ${entryExpiryBatches(entry).map(batch => `${batch.expiration_date}: ${money(batch.quantity)}`).join(' | ')}`}</small>${entry.image_path ? `<button type="button" data-view-entry-image="${escapeHtml(entry.image_path)}">عرض الصورة</button>` : ''}</span>`).join('') : '<small class="no-counts">لم يسجل أحد كمية في هذا الصنف بعد</small>'}
@@ -262,11 +266,12 @@ function inventoryCard(material, entries, canEdit) {
 
 function wireSearch() {
   const input = state.root.querySelector('#inventory-search');
+  const category = state.root.querySelector('#inventory-category');
   const counter = state.root.querySelector('#inventory-result-count');
   if (!input) return;
   const cards = [...state.root.querySelectorAll('[data-material-card]')].map((card, index) => {
     const text = card.dataset.search || '';
-    return { card, index, text, words: text.split(/\s+/) };
+    return { card, index, text, category: card.dataset.category || '', words: text.split(/\s+/) };
   });
   let filterTimer;
   let filterFrame;
@@ -274,10 +279,11 @@ function wireSearch() {
   const applyFilter = () => {
     if (!input.isConnected) return;
     const query = normalize(input.value);
+    const selectedCategory = category?.value || '';
     let visible = 0;
     cards.forEach(item => {
       const score = searchScore(item.text, query, item.words);
-      const show = !query || score < 99;
+      const show = (!query || score < 99) && (!selectedCategory || item.category === selectedCategory);
       if (item.card.hidden === show) item.card.hidden = !show;
       if (show) {
         visible += 1;
@@ -298,6 +304,10 @@ function wireSearch() {
     }, 65);
   };
   input.oninput = scheduleFilter;
+  if (category) category.onchange = () => {
+    state.category = category.value;
+    scheduleFilter();
+  };
   input.__applyInventoryFilter = () => {
     state.filter = input.value;
     clearTimeout(filterTimer);

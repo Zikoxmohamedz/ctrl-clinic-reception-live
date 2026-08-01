@@ -3,7 +3,22 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const config = window.CTRL_CONFIG || {};
 const publishableKey = config.SUPABASE_PUBLISHABLE_KEY || config.SUPABASE_ANON_KEY;
 export const isConfigured = Boolean(config.SUPABASE_URL && publishableKey && !config.SUPABASE_URL.includes('YOUR_'));
-export const supabase = isConfigured ? createClient(config.SUPABASE_URL, publishableKey) : null;
+const sessionKey = 'ctrl_audit_session';
+let auditSession = sessionStorage.getItem(sessionKey);
+if (!auditSession) {
+  auditSession = crypto.randomUUID();
+  sessionStorage.setItem(sessionKey, auditSession);
+}
+const deviceType = /iPad|Tablet/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent))
+  ? 'tablet'
+  : /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+const auditHeaders = {
+  'x-ctrl-user-agent': navigator.userAgent.slice(0, 500),
+  'x-ctrl-device': deviceType,
+  'x-ctrl-platform': String(navigator.userAgentData?.platform || navigator.platform || '').slice(0, 100),
+  'x-ctrl-session': auditSession,
+};
+export const supabase = isConfigured ? createClient(config.SUPABASE_URL, publishableKey, { global: { headers: auditHeaders } }) : null;
 
 export const today = () => new Date().toLocaleDateString('en-CA');
 export const money = value => new Intl.NumberFormat('ar-EG-u-nu-latn', { maximumFractionDigits: 2 }).format(Number(value || 0));

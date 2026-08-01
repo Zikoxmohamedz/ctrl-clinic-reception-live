@@ -1,7 +1,7 @@
-import { escapeHtml, toast, confirmDialog, supabase } from '../supabase.js?v=20260730-latin-digits';
-import { list, insert, remove } from '../data.js?v=20260730-latin-digits';
+import { escapeHtml, toast, confirmDialog, supabase } from '../supabase.js?v=20260801-audit-context';
+import { list, insert, remove } from '../data.js?v=20260801-reception-features';
 
-const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد — فتح الصفحة', reports: 'التقارير', records: 'إدارة السجلات', settings: 'الإعدادات' };
+const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد — فتح الصفحة', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
 const actionLabels = {
   inventory_reports: 'عرض وتصدير تقارير الجرد',
   inventory_all_reports: 'تقرير الجرد المجمع لكل الفروع',
@@ -52,18 +52,18 @@ async function usersTab(box) {
       <div class="field"><label>كلمة المرور<input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 أحرف على الأقل" required></label></div>
       <div class="field"><label>المسمى الوظيفي<select name="role"><option value="receptionist">موظف استقبال</option><option value="admin">مدير</option></select></label></div>
       <div class="field span-2"><label>الفروع المسموحة <em>*</em></label><div class="check-grid branch-checks">${branches.map((branch, index) => checkCard('branch_ids', branch.id, branch.name, index === 0)).join('')}</div></div>
-      <div class="field span-2"><label>الصفحات الظاهرة <em>*</em></label><div class="check-grid permission-checks">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !['records', 'settings'].includes(key))).join('')}</div></div>
+      <div class="field span-2"><label>الصفحات الظاهرة <em>*</em></label><div class="check-grid permission-checks">${Object.entries(pageLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, !['records', 'audit_logs', 'settings'].includes(key))).join('')}</div></div>
       <div class="field span-2"><label>صلاحيات الإجراءات والتقارير</label><div class="check-grid permission-checks">${Object.entries(actionLabels).map(([key, label]) => checkCard(`permission_${key}`, '1', label, false)).join('')}</div></div>
       <button class="btn primary">إضافة الموظف</button>
     </form>
     <div class="section-divider"></div>
     <div class="import-card"><div><b>استيراد الموظفين من Excel</b><p>اكتب username وpassword لكل موظف. branch_codes وpermissions يقبلان أكثر من قيمة مفصولة بفاصلة.</p></div><div class="import-actions"><button type="button" class="btn gold" id="download-users-template">تنزيل قالب فارغ ↓</button><label class="btn ghost file-button">اختيار ملف Excel<input id="users-import-file" type="file" accept=".xlsx,.xls" hidden></label></div><div id="import-status" class="import-status" hidden></div></div>
   </div>
-  <div class="table-wrap"><table class="data-table"><thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>المسمى</th><th>الفروع المسموحة</th><th>الصفحات</th></tr></thead><tbody>${users.length ? users.map(user => {
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>الموظف</th><th>اسم المستخدم</th><th>المسمى</th><th>الفروع المسموحة</th><th>الصفحات</th><th>الحساب</th></tr></thead><tbody>${users.length ? users.map(user => {
     const branchNames = (access.branches[user.id] || []).map(id => branches.find(branch => branch.id === id)?.name).filter(Boolean);
     const allowedPages = Object.entries(access.permissions[user.id] || {}).filter(([key, allowed]) => allowed && accessLabels[key]).map(([key]) => accessLabels[key]);
-    return `<tr><td class="row-title">${escapeHtml(user.full_name)}</td><td><b>${escapeHtml(user.username || user.email?.split('@')[0] || '—')}</b></td><td><span class="badge ${user.role === 'admin' ? 'admin' : 'client'}">${user.role === 'admin' ? 'مدير' : 'استقبال'}</span></td><td><div class="chip-list">${branchNames.map(name => `<span>${escapeHtml(name)}</span>`).join('')}</div></td><td>${escapeHtml(allowedPages.join('، ') || 'بدون صفحات')}</td></tr>`;
-  }).join('') : '<tr><td colspan="5"><div class="empty-state">لا يوجد موظفون بعد</div></td></tr>'}</tbody></table></div>`;
+    return `<tr><td class="row-title">${escapeHtml(user.full_name)}</td><td><b>${escapeHtml(user.username || user.email?.split('@')[0] || '—')}</b></td><td><span class="badge ${user.role === 'admin' ? 'admin' : 'client'}">${user.role === 'admin' ? 'مدير' : 'استقبال'}</span></td><td><div class="chip-list">${branchNames.map(name => `<span>${escapeHtml(name)}</span>`).join('')}</div></td><td>${escapeHtml(allowedPages.join('، ') || 'بدون صفحات')}</td><td><button type="button" class="btn ghost mini" data-change-password="${user.id}" data-user-name="${escapeHtml(user.full_name)}">تغيير الباسورد</button></td></tr>`;
+  }).join('') : '<tr><td colspan="6"><div class="empty-state">لا يوجد موظفون بعد</div></td></tr>'}</tbody></table></div>`;
 
   box.querySelector('#user-form').onsubmit = async event => {
     event.preventDefault();
@@ -82,6 +82,7 @@ async function usersTab(box) {
   };
   box.querySelector('#download-users-template').onclick = () => downloadUsersTemplate(branches);
   box.querySelector('#users-import-file').onchange = event => importUsersWorkbook(event.target.files[0], branches, box);
+  box.querySelectorAll('[data-change-password]').forEach(button => button.onclick = () => openPasswordModal(button.dataset.changePassword, button.dataset.userName));
 }
 
 async function permissionsTab(box) {
@@ -115,19 +116,19 @@ function checkCard(name, value, label, checked) {
 
 function defaultPermissions(role) {
   const admin = role === 'admin';
-  return { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: admin, inventory_branch_activity: admin, reports: true, records: admin, edit_records: admin, delete_records: admin, settings: admin };
+  return { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: admin, inventory_branch_activity: admin, reports: true, records: admin, edit_records: admin, delete_records: admin, audit_logs: admin, settings: admin };
 }
 
 async function getAccessData(users) {
   const [branchesResult, permissionsResult] = await Promise.all([
     supabase.from('user_branches').select('user_id,branch_id'),
-    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_settings'),
+    supabase.from('user_permissions').select('user_id,can_home,can_consumption,can_additions,can_inventory,can_inventory_reports,can_inventory_all_reports,can_inventory_branch_activity,can_reports,can_records,can_edit_records,can_delete_records,can_audit_logs,can_settings'),
   ]);
   if (branchesResult.error) throw branchesResult.error;
   if (permissionsResult.error) throw permissionsResult.error;
   const branches = {};
   branchesResult.data.forEach(row => (branches[row.user_id] ??= []).push(row.branch_id));
-  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, inventory_branch_activity: row.can_inventory_branch_activity, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, settings: row.can_settings }]));
+  const permissions = Object.fromEntries(permissionsResult.data.map(row => [row.user_id, { home: row.can_home, consumption: row.can_consumption, additions: row.can_additions, inventory: row.can_inventory, inventory_reports: row.can_inventory_reports, inventory_all_reports: row.can_inventory_all_reports, inventory_branch_activity: row.can_inventory_branch_activity, reports: row.can_reports, records: row.can_records, edit_records: row.can_edit_records, delete_records: row.can_delete_records, audit_logs: row.can_audit_logs, settings: row.can_settings }]));
   return { branches, permissions };
 }
 
@@ -138,7 +139,7 @@ async function saveAccess(userId, branchIds, permissions) {
   if (branchError) throw branchError;
   const { error: profileError } = await supabase.from('users').update({ branch_id: branchIds[0] }).eq('id', userId);
   if (profileError) throw profileError;
-  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_inventory: permissions.inventory, can_inventory_reports: permissions.inventory_reports, can_inventory_all_reports: permissions.inventory_all_reports, can_inventory_branch_activity: permissions.inventory_branch_activity, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_settings: permissions.settings, updated_at: new Date().toISOString() });
+  const { error: permissionError } = await supabase.from('user_permissions').upsert({ user_id: userId, can_home: permissions.home, can_consumption: permissions.consumption, can_additions: permissions.additions, can_inventory: permissions.inventory, can_inventory_reports: permissions.inventory_reports, can_inventory_all_reports: permissions.inventory_all_reports, can_inventory_branch_activity: permissions.inventory_branch_activity, can_reports: permissions.reports, can_records: permissions.records, can_edit_records: permissions.edit_records, can_delete_records: permissions.delete_records, can_audit_logs: permissions.audit_logs, can_settings: permissions.settings, updated_at: new Date().toISOString() });
   if (permissionError) throw permissionError;
   const current = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
   if (current?.id === userId) {
@@ -155,6 +156,31 @@ async function createUser(payload) {
   if (error) throw new Error(data?.error || error.message || 'تعذر إنشاء المستخدم');
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+function openPasswordModal(userId, userName) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `<div class="modal-backdrop"><form class="modal small password-modal"><button type="button" class="modal-x">×</button><p class="eyebrow">إدارة حساب الموظف</p><h3>تغيير باسورد ${escapeHtml(userName)}</h3><p>لن تظهر كلمة المرور داخل سجل التعديلات؛ سيسجل النظام فقط أن المدير غيّرها.</p><div class="field"><label>الباسورد الجديد <em>*</em><input name="password" type="password" minlength="8" autocomplete="new-password" required placeholder="8 أحرف على الأقل"></label></div><div class="field"><label>تأكيد الباسورد <em>*</em><input name="confirm_password" type="password" minlength="8" autocomplete="new-password" required></label></div><div class="modal-actions"><button type="button" class="btn ghost modal-cancel">إلغاء</button><button class="btn primary" type="submit">حفظ الباسورد</button></div></form></div>`;
+  const form = root.querySelector('form');
+  const close = () => { root.innerHTML = ''; };
+  root.querySelector('.modal-x').onclick = close;
+  root.querySelector('.modal-cancel').onclick = close;
+  form.onsubmit = async event => {
+    event.preventDefault();
+    if (form.password.value !== form.confirm_password.value) return toast('تأكيد الباسورد غير مطابق', 'warning');
+    const button = form.querySelector('[type="submit"]');
+    button.disabled = true;
+    try {
+      const { data, error } = await supabase.functions.invoke('invite-user', { body: { action: 'change_password', user_id: userId, password: form.password.value } });
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'تعذر تغيير الباسورد');
+      close();
+      toast('تم تغيير الباسورد بنجاح');
+    } catch (error) {
+      toast(error.message, 'error');
+      button.disabled = false;
+    }
+  };
+  form.password.focus();
 }
 
 function downloadUsersTemplate(branches) {

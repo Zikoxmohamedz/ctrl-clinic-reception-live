@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js?v=20260730-latin-digits';
+import { supabase } from './supabase.js?v=20260801-audit-context';
 
 const tableMap = {
   branches: 'branches',

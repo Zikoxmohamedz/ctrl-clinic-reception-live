@@ -1,5 +1,5 @@
-import { today, toast, escapeHtml } from '../supabase.js?v=20260730-latin-digits';
-import { list, insert, searchMaterials } from '../data.js?v=20260730-latin-digits';
+import { today, toast, escapeHtml } from '../supabase.js?v=20260801-audit-context';
+import { list, insert, searchMaterials } from '../data.js?v=20260801-reception-features';
 import { openTemporaryMaterial } from './temp-material.js?v=20260730-temp-save-v2';
 
 export async function renderConsumption(root, profile) {

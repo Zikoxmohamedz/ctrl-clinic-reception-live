@@ -1,4 +1,4 @@
-import { escapeHtml, toast } from '../supabase.js?v=20260730-latin-digits';
+import { escapeHtml, toast } from '../supabase.js?v=20260801-audit-context';
 
 export function openTemporaryMaterial(initialName, onSave) {
   const root = document.getElementById('modal-root');
