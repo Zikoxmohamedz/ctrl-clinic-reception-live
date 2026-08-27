@@ -2,7 +2,7 @@ import './theme.js';
 import { supabase } from './supabase.js?v=20260801-audit-context';
 import { renderConsumption } from './pages/consumption.js?v=20260730-sales-total-v11';
 import { renderAdditions } from './pages/additions.js?v=20260801-auto-add-v2';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260801-clear-validation-v2';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260827-opening-balance-v1';
 import { renderReports } from './pages/reports.js?v=20260730-sales-total-v11';
 import { renderRecords } from './pages/records.js?v=20260730-sales-total-v11';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260801-device-details';

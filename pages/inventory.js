@@ -807,9 +807,14 @@ function refreshSession() {
 }
 
 async function getSnapshot(sessionId) {
-  const { data, error } = await supabase.rpc('inventory_session_snapshot', { target_session: sessionId });
-  if (error) throw error;
-  return data;
+  const [snapshotResult, varianceResult] = await Promise.all([
+    supabase.rpc('inventory_session_snapshot', { target_session: sessionId }),
+    supabase.rpc('inventory_session_variance', { target_session: sessionId }),
+  ]);
+  if (snapshotResult.error) throw snapshotResult.error;
+  if (varianceResult.error) throw varianceResult.error;
+  snapshotResult.data.stock_variance = varianceResult.data || [];
+  return snapshotResult.data;
 }
 
 function prefetchInventoryReports(force = false) {
@@ -924,6 +929,7 @@ async function openReport(sessionId, trigger) {
     const snapshot = await getSnapshot(sessionId);
     state.reportSnapshot = snapshot;
     const summary = summarizeEntries(snapshot.entries);
+    const varianceByMaterial = new Map((snapshot.stock_variance || []).map(row => [row.material_id, row]));
     const uncounted = uncountedMaterials(snapshot);
     const expiryAlerts = flattenEntryBatches(snapshot.entries).filter(batch => {
       const status = expirationStatus(batch.expiration_date, batch.is_supply);
@@ -939,12 +945,15 @@ async function openReport(sessionId, trigger) {
         <article class="${expiryAlerts.length ? 'danger' : ''}"><span>تنبيهات الصلاحية</span><strong>${expiryAlerts.length}</strong><small>منتهي أو أقل من 3 شهور</small></article>
         <article><span>إجمالي الكميات</span><strong>${money(snapshot.entries.reduce((sum, entry) => sum + Number(entry.quantity), 0))}</strong><small>${snapshot.entries.length} تسجيل</small></article>
       </div>
-      <div class="inventory-report-block"><h4>التقرير التلخيصي</h4><p>إجمالي الصنف مباشرة بعد جمع كميات كل الموظفين.</p>
-        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الكود</th><th>الوحدة</th><th>الإجمالي</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th></tr></thead><tbody>${summary.map((row, index) => {
+      <div class="inventory-report-block"><h4>التقرير التلخيصي وفروق المخزون</h4><p>الرصيد الدفتري = أول المدة + الإضافات − الصرف. الفرق الموجب زيادة والسالب عجز.</p>
+        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الكود</th><th>الوحدة</th><th>أول المدة</th><th>الإضافات</th><th>الصرف</th><th>الرصيد الدفتري</th><th>الجرد الفعلي</th><th>العجز / الزيادة</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th></tr></thead><tbody>${summary.map((row, index) => {
           const batches = aggregateExpiryBatches(row.entries);
           const worst = worstExpiryStatus(batches);
-          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td><b>${money(row.quantity)}</b></td><td><div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td></tr>`;
-        }).join('') || '<tr><td colspan="8"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
+          const stock = varianceByMaterial.get(row.material_id) || {};
+          const variance = Number(stock.variance_quantity || 0);
+          const varianceLabel = variance > 0 ? `زيادة ${money(variance)}` : variance < 0 ? `عجز ${money(Math.abs(variance))}` : 'مطابق';
+          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${money(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${money(stock.expected_quantity)}</b></td><td><b>${money(row.quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td><div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td></tr>`;
+        }).join('') || '<tr><td colspan="13"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
       </div>
       <div class="inventory-report-block"><h4>التقرير التفصيلي</h4><p>كمية وعملية كل موظف بشكل منفصل.</p>
         <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الموظف</th><th>العملية المكتوبة</th><th>الكمية</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th><th>الصورة</th></tr></thead><tbody>${snapshot.entries.map((entry, index) => {
@@ -997,6 +1006,7 @@ async function exportInventoryExcel(type) {
       snapshot,
       imageLinks,
     );
+    if (type === 'summary') buildInventoryVarianceExcelSheet(workbook, snapshot);
 
     const alerts = makeDetailedExportRows(snapshot)
       .filter(row => ['expired', 'warning'].includes(expirationStatus(row.expirationDate, row.isSupply).level));
@@ -1117,6 +1127,7 @@ function uniqueSheetName(value, usedNames) {
 }
 
 function makeSummaryExportRows(snapshot) {
+  const varianceByMaterial = new Map((snapshot.stock_variance || []).map(row => [row.material_id, row]));
   return summarizeEntries(snapshot.entries).map(group => {
     const expiryAllocations = aggregateExpiryBatches(group.entries);
     const notes = group.entries.flatMap(entry => {
@@ -1135,6 +1146,11 @@ function makeSummaryExportRows(snapshot) {
       category: group.material_category,
       unit: group.material_unit,
       quantity: Number(group.quantity),
+      openingQuantity: Number(varianceByMaterial.get(group.material_id)?.opening_quantity || 0),
+      additionsQuantity: Number(varianceByMaterial.get(group.material_id)?.additions_quantity || 0),
+      consumptionQuantity: Number(varianceByMaterial.get(group.material_id)?.consumption_quantity || 0),
+      expectedQuantity: Number(varianceByMaterial.get(group.material_id)?.expected_quantity || 0),
+      varianceQuantity: Number(varianceByMaterial.get(group.material_id)?.variance_quantity || 0),
       note: notes.join(' | '),
       expiryAllocations,
       expirationDate: '',
@@ -1267,6 +1283,43 @@ function buildInventoryExcelSheet(workbook, sheetName, title, rows, snapshot, im
   sheet.autoFilter = { from: 'A5', to: `K${lastRow}` };
   sheet.pageSetup.printArea = `A1:K${lastRow}`;
   sheet.headerFooter.oddFooter = '&Cصفحة &P من &N';
+}
+
+function buildInventoryVarianceExcelSheet(workbook, snapshot) {
+  const sheet = workbook.addWorksheet('العجز والزيادة', {
+    views: [{ rightToLeft: true, showGridLines: false, state: 'frozen', ySplit: 4 }],
+  });
+  sheet.mergeCells('A1:J1');
+  sheet.getCell('A1').value = `ctrl. | فروق مخزون ${snapshot.session.branch_name}`;
+  sheet.getCell('A1').font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
+  sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF172554' } };
+  sheet.getCell('A1').alignment = { horizontal: 'center' };
+  sheet.mergeCells('A2:J2');
+  sheet.getCell('A2').value = 'الرصيد الدفتري = أول المدة + الإضافات − الصرف | الفرق = الجرد الفعلي − الرصيد الدفتري';
+  sheet.getCell('A2').alignment = { horizontal: 'center' };
+  sheet.getRow(4).values = ['#', 'الكود', 'الصنف', 'الوحدة', 'أول المدة', 'الإضافات', 'الصرف', 'الرصيد الدفتري', 'الجرد الفعلي', 'العجز / الزيادة'];
+  sheet.getRow(4).eachCell(cell => {
+    cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+    cell.alignment = { horizontal: 'center' };
+  });
+  [8, 16, 30, 12, 14, 14, 14, 16, 16, 18].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+  const materials = new Map(state.materials.map(material => [material.id, material]));
+  (snapshot.stock_variance || []).forEach((stock, index) => {
+    const material = materials.get(stock.material_id) || {};
+    const variance = Number(stock.variance_quantity || 0);
+    const row = sheet.getRow(index + 5);
+    row.values = [index + 1, material.code || '', material.name || '', material.unit || '', Number(stock.opening_quantity || 0), Number(stock.additions_quantity || 0), Number(stock.consumption_quantity || 0), Number(stock.expected_quantity || 0), Number(stock.actual_quantity || 0), variance];
+    row.eachCell({ includeEmpty: true }, cell => {
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: variance < 0 ? 'FFFEE2E2' : variance > 0 ? 'FFFEF3C7' : 'FFF0FDF4' } };
+    });
+    for (let column = 5; column <= 10; column += 1) row.getCell(column).numFmt = '#,##0.00';
+  });
+  const lastRow = Math.max(5, (snapshot.stock_variance || []).length + 4);
+  sheet.autoFilter = { from: 'A4', to: `J${lastRow}` };
+  sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printArea: `A1:J${lastRow}` };
 }
 
 function buildUncountedExcelSheet(workbook, materials, snapshot) {
