@@ -8,7 +8,7 @@ import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.01.4';
+const APP_VERSION = '2026.09.01.5';
 const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
 

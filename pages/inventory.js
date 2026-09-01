@@ -986,6 +986,20 @@ async function openReport(sessionId, trigger) {
     const summary = summarizeEntries(snapshot.entries);
     const varianceByMaterial = new Map((snapshot.stock_variance || []).map(row => [row.material_id, row]));
     const materialById = new Map(state.materials.map(material => [material.id, material]));
+    const countedByMaterial = new Map(summary.map(row => [row.material_id, row]));
+    const stockSummary = (snapshot.stock_variance || []).map(stock => {
+      const counted = countedByMaterial.get(stock.material_id);
+      const material = materialById.get(stock.material_id) || {};
+      return counted || {
+        material_id: stock.material_id,
+        material_name: material.name || 'صنف غير معروف',
+        material_code: material.code || '',
+        material_unit: material.unit || '',
+        material_category: material.category || '',
+        quantity: 0,
+        entries: [],
+      };
+    }).sort((a, b) => String(a.material_name).localeCompare(String(b.material_name), 'ar'));
     const inventoryCostValue = (snapshot.stock_variance || []).reduce((sum, row) => sum + Number(row.actual_quantity || 0) * Number(materialById.get(row.material_id)?.cost_price || 0), 0);
     const uncounted = uncountedMaterials(snapshot);
     const expiryAlerts = flattenEntryBatches(snapshot.entries).filter(batch => {
@@ -1004,14 +1018,15 @@ async function openReport(sessionId, trigger) {
         <article><span>قيمة المخزون بالتكلفة</span><strong>${money(inventoryCostValue)} ج.م</strong><small>بعيدًا عن سعر البيع</small></article>
       </div>
       <div class="inventory-report-block"><h4>التقرير التلخيصي وفروق المخزون</h4><p>الرصيد الدفتري = أول المدة + الإضافات − الصرف. الفرق الموجب زيادة والسالب عجز.</p>
-        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الكود</th><th>الوحدة</th><th>أول المدة</th><th>الإضافات</th><th>الصرف</th><th>الرصيد الدفتري</th><th>الجرد الفعلي</th><th>العجز / الزيادة</th><th>تكلفة الوحدة</th><th>قيمة المخزون</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th></tr></thead><tbody>${summary.map((row, index) => {
+        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الكود</th><th>الوحدة</th><th>أول المدة</th><th>الإضافات</th><th>الصرف</th><th>الرصيد الدفتري</th><th>الجرد الفعلي</th><th>العجز / الزيادة</th><th>تكلفة الوحدة</th><th>قيمة المخزون</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th></tr></thead><tbody>${stockSummary.map((row, index) => {
           const batches = aggregateExpiryBatches(row.entries);
           const worst = worstExpiryStatus(batches);
           const stock = varianceByMaterial.get(row.material_id) || {};
           const variance = Number(stock.variance_quantity || 0);
           const costPrice = Number(materialById.get(row.material_id)?.cost_price || 0);
           const varianceLabel = variance > 0 ? `زيادة ${money(variance)}` : variance < 0 ? `عجز ${money(Math.abs(variance))}` : 'مطابق';
-          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${money(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${money(stock.expected_quantity)}</b></td><td><b>${money(row.quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td>${money(costPrice)} ج.م</td><td><b>${money(Number(row.quantity) * costPrice)} ج.م</b></td><td><div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td></tr>`;
+          const notCounted = row.entries.length === 0;
+          return `<tr class="${notCounted && variance < 0 ? 'inventory-shortage-row' : `expiry-row-${worst.level}`}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}${notCounted ? '<small class="row-sub">لم يتم جرده</small>' : ''}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${money(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${money(stock.expected_quantity)}</b></td><td><b>${money(stock.actual_quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td>${money(costPrice)} ج.م</td><td><b>${money(Number(stock.actual_quantity) * costPrice)} ج.م</b></td><td>${notCounted ? '<span class="badge danger">غير مجرود</span>' : `<div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div>`}</td><td>${notCounted ? '—' : `<div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div>`}</td></tr>`;
         }).join('') || '<tr><td colspan="15"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
       </div>
       <div class="inventory-report-block"><h4>التقرير التفصيلي</h4><p>كمية وعملية كل موظف بشكل منفصل.</p>
