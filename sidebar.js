@@ -2,13 +2,13 @@ import './theme.js';
 import { supabase } from './supabase.js?v=20260801-audit-context';
 import { renderConsumption } from './pages/consumption.js?v=20260901-cost-vials-v1';
 import { renderAdditions } from './pages/additions.js?v=20260801-auto-add-v2';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260901-cost-vials-v1';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260901-reconciliation-v2';
 import { renderReports } from './pages/reports.js?v=20260730-sales-total-v11';
 import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.01.3';
+const APP_VERSION = '2026.09.01.4';
 const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
 

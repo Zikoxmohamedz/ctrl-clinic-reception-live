@@ -76,6 +76,13 @@ begin
     union
     select e.material_id from public.inventory_entries e where e.session_id = target_session
     union
+    select e.material_id
+    from public.inventory_entries e
+    join public.inventory_sessions prior_session on prior_session.id = e.session_id
+    where prior_session.branch_id = target_branch
+      and prior_session.status = 'completed'
+      and prior_session.completed_at < target_cutoff
+    union
     select a.material_id from public.stock_additions a where a.branch_id = target_branch and a.created_at < target_cutoff
     union
     select c.material_id from public.consumption_records c where c.branch_id = target_branch and c.created_at < target_cutoff
@@ -93,7 +100,6 @@ begin
       where s.branch_id = target_branch
         and s.status = 'completed'
         and s.completed_at < target_cutoff
-        and (o.opened_at is null or s.completed_at >= o.opened_at)
       group by s.id, s.completed_at
       order by s.completed_at desc
       limit 1

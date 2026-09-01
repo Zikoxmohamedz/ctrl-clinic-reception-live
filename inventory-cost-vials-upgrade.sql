@@ -5,7 +5,15 @@ alter table public.materials
 
 alter table public.inventory_entries
   add column if not exists closed_vials numeric,
-  add column if not exists open_vials numeric;
+  add column if not exists open_vials numeric,
+  add column if not exists is_non_vial boolean not null default false;
+
+-- Preserve the meaning of rows saved before the two choices were separated.
+update public.inventory_entries
+set is_non_vial = true
+where is_supply = true
+  and closed_vials is null
+  and open_vials is null;
 
 alter table public.inventory_entries
   drop constraint if exists inventory_entry_vial_counts_nonnegative;
@@ -35,3 +43,5 @@ comment on column public.materials.cost_price is
   'Cost per inventory unit, used only for stock valuation and never as selling price.';
 comment on column public.inventory_entries.closed_vials is 'Physical count of closed vials.';
 comment on column public.inventory_entries.open_vials is 'Physical count of open vials.';
+comment on column public.inventory_entries.is_non_vial is
+  'True when vial counts do not apply; independent from the no-expiry/supply flag.';
