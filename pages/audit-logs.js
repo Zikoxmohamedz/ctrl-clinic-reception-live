@@ -6,7 +6,7 @@ const pageLabels = { consumption: 'صرف المواد', additions: 'الإضا�
 const tableLabels = { consumption_records: 'سجل صرف', stock_additions: 'سجل إضافة', materials: 'صنف', branches: 'فرع', users: 'مستخدم', auth_users: 'حساب مستخدم', user_branches: 'فروع المستخدم', user_permissions: 'صلاحيات المستخدم' };
 const actionLabels = { INSERT: 'إضافة', UPDATE: 'تعديل', DELETE: 'حذف' };
 const fieldLabels = {
-  quantity: 'الكمية', selling_price: 'إجمالي سعر البيع', date: 'التاريخ', material_id: 'الصنف', branch_id: 'الفرع',
+  quantity: 'الكمية', selling_price: 'إجمالي سعر البيع', cost_price: 'سعر التكلفة', closed_vials: 'الفيالات المقفولة', open_vials: 'الفيالات المفتوحة', date: 'التاريخ', material_id: 'الصنف', branch_id: 'الفرع',
   client_name: 'اسم العميلة', client_code: 'كود العميلة', unit: 'الوحدة', notes: 'الملاحظات', record_type: 'نوع الحركة',
   transfer_to: 'الفرع المستلم', name: 'الاسم', code: 'الكود', barcode: 'الباركود', category: 'التصنيف',
   default_price: 'إجمالي سعر البيع الافتراضي', scope: 'نطاق الصنف', is_temp: 'صنف مؤقت', archived_at: 'حالة الأرشفة',

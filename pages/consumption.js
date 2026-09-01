@@ -16,6 +16,7 @@ export async function renderConsumption(root, profile) {
         <div class="field"><label>كود العميلة <small>(الاسم أو الكود)</small><input name="client_code" placeholder="مثال: C-1048"></label></div>
         <div class="field"><label>نوع العملية <em>*</em><span class="radio-group"><label class="radio-card"><input type="radio" name="record_type" value="client" checked><span>صرف لعميلة</span></label><label class="radio-card"><input type="radio" name="record_type" value="transfer"><span>تحويل لفرع</span></label></span></label></div>
         <div class="field" id="transfer-field" hidden><label>الفرع المستلم <em>*</em><select name="transfer_to"><option value="">اختر الفرع</option>${branches.filter(branch => branch.id !== profile.branch_id).map(branch => `<option value="${branch.id}">${escapeHtml(branch.name)}</option>`).join('')}</select></label></div>
+        <div class="field span-2"><label>ملاحظات الصرف<textarea name="notes" placeholder="أي تفاصيل إضافية عن عملية الصرف..."></textarea></label></div>
       </div>
       <div class="section-divider"></div>
       <div class="field search-wrap"><label>البحث عن مادة <input id="material-search" autocomplete="off" placeholder="اكتب اسم المادة أو الكود (حرفان على الأقل)"></label><div id="material-results" class="autocomplete" hidden></div></div>
@@ -37,6 +38,7 @@ export async function renderConsumption(root, profile) {
       client_code: form.client_code.value,
       record_type: form.record_type.value,
       transfer_to: form.transfer_to.value,
+      notes: form.notes.value,
       items: items.map(material => ({
         id: material.id,
         name: material.name,
@@ -66,6 +68,7 @@ export async function renderConsumption(root, profile) {
       const type = draft.record_type === 'transfer' ? 'transfer' : 'client';
       form.querySelector(`[name="record_type"][value="${type}"]`).checked = true;
       form.transfer_to.value = draft.transfer_to || '';
+      form.notes.value = draft.notes || '';
       transferField.hidden = type !== 'transfer';
       items = draft.items.filter(material => material?.id && material?.name && material?.unit);
     } catch {
@@ -179,7 +182,7 @@ export async function renderConsumption(root, profile) {
       transfer_to: type === 'transfer' ? form.transfer_to.value : null,
       record_type: type,
       created_by: profile.id,
-      notes: null,
+      notes: form.notes.value.trim() || null,
     }));
     if (payload.some(row => !row.quantity || row.quantity <= 0)) return toast('راجع الكميات المدخلة', 'warning');
     const button = form.querySelector('[type=submit]');

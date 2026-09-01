@@ -149,7 +149,7 @@ function drawInventory(snapshot, joined) {
       <div>
         <span class="badge ${completed ? 'client' : 'temp'}">${completed ? 'مكتمل' : 'جرد مفتوح'}</span>
         <strong>${escapeHtml(snapshot.session.branch_name)}</strong>
-        <small>بدأ ${formatDateTime(snapshot.session.created_at)} · ${countedMaterials} من ${state.materials.length} صنف</small>
+        <small>تاريخ الجرد ${formatInventorySessionDate(snapshot.session)} · ${countedMaterials} من ${state.materials.length} صنف</small>
       </div>
       <div class="inventory-session-actions">
         ${!joined && !completed ? '<button class="btn primary" id="join-inventory">الانضمام للجرد الجاري</button>' : ''}
@@ -231,6 +231,9 @@ function inventoryCard(material, entries, canEdit) {
   const draft = state.drafts.get(material.id);
   const expression = draft?.expression ?? savedMine?.quantity_expression ?? '';
   const isSupply = draft?.isSupply ?? savedMine?.is_supply ?? false;
+  const closedVials = draft?.closedVials ?? savedMine?.closed_vials ?? '';
+  const openVials = draft?.openVials ?? savedMine?.open_vials ?? '';
+  const notes = draft?.notes ?? savedMine?.notes ?? '';
   const savedBatches = entryExpiryBatches(savedMine);
   const expiryBatches = draft?.batches ?? savedBatches;
   const expiryMode = draft?.expiryMode ?? (expiryBatches.length > 1 ? 'split' : 'all');
@@ -243,14 +246,16 @@ function inventoryCard(material, entries, canEdit) {
   return `<article class="inventory-item" data-material-card data-material-id="${material.id}" data-category="${escapeHtml(material.category || '')}" data-search="${escapeHtml(normalize(`${material.name} ${material.code} ${material.category || ''}`))}">
     <div class="inventory-item-head"><div><strong>${escapeHtml(material.name)}</strong><small>${escapeHtml(material.code)} · ${escapeHtml(material.category || 'بدون فئة')}</small></div><span>${escapeHtml(material.unit)}</span></div>
     <div class="inventory-contributions">
-      ${contributions.length ? contributions.map(entry => `<span class="${entry.created_by === state.profile.id ? 'mine' : ''}"><b>${escapeHtml(entry.created_by_name)}</b> جرد <strong>${money(entry.quantity)}</strong><small>${escapeHtml(entry.quantity_expression)}${entry.is_supply ? ' · مستلزمات' : ` · ${entryExpiryBatches(entry).map(batch => `${batch.expiration_date}: ${money(batch.quantity)}`).join(' | ')}`}</small>${entry.image_path ? `<button type="button" data-view-entry-image="${escapeHtml(entry.image_path)}">عرض الصورة</button>` : ''}</span>`).join('') : '<small class="no-counts">لم يسجل أحد كمية في هذا الصنف بعد</small>'}
+      ${contributions.length ? contributions.map(entry => `<span class="${entry.created_by === state.profile.id ? 'mine' : ''}"><b>${escapeHtml(entry.created_by_name)}</b> جرد <strong>${money(entry.quantity)}</strong><small>${escapeHtml(entry.quantity_expression)}${entry.is_supply ? ' · مستلزمات/ليس فيالات' : ` · مقفول: ${money(entry.closed_vials)} · مفتوح: ${money(entry.open_vials)} · ${entryExpiryBatches(entry).map(batch => `${batch.expiration_date}: ${money(batch.quantity)}`).join(' | ')}`}${entry.notes ? ` · ${escapeHtml(entry.notes)}` : ''}</small>${entry.image_path ? `<button type="button" data-view-entry-image="${escapeHtml(entry.image_path)}">عرض الصورة</button>` : ''}</span>`).join('') : '<small class="no-counts">لم يسجل أحد كمية في هذا الصنف بعد</small>'}
     </div>
     <div class="inventory-entry-grid">
       <label class="inventory-expression"><span>الكمية أو العملية الحسابية</span><input data-entry-expression value="${escapeHtml(expression)}" inputmode="decimal" placeholder="مثال: 10*30" ${canEdit ? '' : 'disabled'}><small data-entry-result>${result !== '' ? `= ${money(result)}` : 'يمكنك استخدام + − × ÷ والأقواس'}</small></label>
+      <div class="inventory-vial-counts" data-vial-counts ${isSupply ? 'hidden' : ''}><label><span>عدد الفيالات المقفولة <em>*</em></span><input data-entry-closed-vials type="number" min="0" step="any" value="${escapeHtml(closedVials)}" placeholder="0" ${canEdit ? '' : 'disabled'}></label><label><span>عدد الفيالات المفتوحة <em>*</em></span><input data-entry-open-vials type="number" min="0" step="any" value="${escapeHtml(openVials)}" placeholder="0" ${canEdit ? '' : 'disabled'}></label></div>
       <div class="inventory-expiration span-2" data-expiry-editor ${isSupply ? 'hidden' : ''}>${renderExpiryEditor(expiryMode, expiryBatches, expression, canEdit, material.unit)}</div>
-      <label class="inventory-supply"><input data-entry-supply type="checkbox" ${isSupply ? 'checked' : ''} ${canEdit ? '' : 'disabled'}><span><i>✓</i>مستلزمات — بدون صلاحية</span></label>
+      <label class="inventory-supply"><input data-entry-supply type="checkbox" ${isSupply ? 'checked' : ''} ${canEdit ? '' : 'disabled'}><span><i>✓</i>مستلزمات / ليس فيالات — بدون حقول فيالات أو صلاحية</span></label>
       <div class="inventory-total"><span>الإجمالي</span><strong data-entry-total>${money(total)}</strong><small>${escapeHtml(material.unit)}</small></div>
     </div>
+    <div class="field inventory-entry-notes"><label>ملاحظات الجرد<textarea data-entry-notes placeholder="أي ملاحظة عن الصنف أو حالته..." ${canEdit ? '' : 'disabled'}>${escapeHtml(notes)}</textarea></label></div>
     <div class="inventory-image-control ${imagePath || draft?.file ? 'has-image' : ''}">
       <div class="inventory-image-copy"><span class="inventory-camera-icon">📷</span><div><b>صورة الصنف أو العبوة</b><small>اختيارية — صوّر بالكاميرا أو اختار صورة من المعرض (حتى 6 ميجابايت)</small></div></div>
       <div class="inventory-image-actions">
@@ -322,6 +327,10 @@ function wireEntryInputs() {
     const materialId = card.dataset.materialId;
     const expression = card.querySelector('[data-entry-expression]');
     const supply = card.querySelector('[data-entry-supply]');
+    const vialCounts = card.querySelector('[data-vial-counts]');
+    const closedVials = card.querySelector('[data-entry-closed-vials]');
+    const openVials = card.querySelector('[data-entry-open-vials]');
+    const notes = card.querySelector('[data-entry-notes]');
     const result = card.querySelector('[data-entry-result]');
     const expiryEditor = card.querySelector('[data-expiry-editor]');
     const modeLabel = card.querySelector('[data-expiry-mode-label]');
@@ -373,19 +382,23 @@ function wireEntryInputs() {
         ...current,
         expression: expression.value,
         isSupply: supply.checked,
+        closedVials: supply.checked ? null : closedVials.value,
+        openVials: supply.checked ? null : openVials.value,
+        notes: notes.value,
         expiryMode: currentMode(),
         batches,
         imagePath: current.imagePath ?? savedEntry?.image_path ?? '',
       };
       state.drafts.set(materialId, draft);
       expiryEditor.hidden = supply.checked;
+      vialCounts.hidden = supply.checked;
       try {
         quantity = evaluateExpression(expression.value);
         result.textContent = `= ${money(quantity)}`;
         result.classList.remove('error');
         updateLocalTotal(card, materialId, quantity);
         if (!supply.checked) updateExpiryBalance(expiryBalance, batches, quantity, currentMode());
-        const draftError = validateQuantityDraft(materialId, quantity) || validateExpiryDraft(draft, quantity, materialId);
+        const draftError = validateQuantityDraft(materialId, quantity) || validateVialDraft(draft, materialId) || validateExpiryDraft(draft, quantity, materialId);
         markInventoryCardError(card, draftError);
         scheduleSave(materialId, card, draft, saveDelay);
       } catch (error) {
@@ -399,6 +412,9 @@ function wireEntryInputs() {
 
     expression.oninput = () => updateDraft();
     supply.onchange = () => updateDraft();
+    closedVials.oninput = () => updateDraft();
+    openVials.oninput = () => updateDraft();
+    notes.oninput = () => updateDraft(900);
     batchesBox.addEventListener('input', event => {
       if (event.target.matches('[data-batch-expression]')) {
         const resultBox = event.target.closest('[data-expiry-batch]').querySelector('[data-batch-result]');
@@ -536,6 +552,20 @@ function validateQuantityDraft(materialId, quantity) {
   return inventoryError(materialId, 'الكمية المكتوبة صفر. اكتب كمية أكبر من صفر، أو امسح الخانة لو مش هتجرد الصنف.');
 }
 
+function validateVialDraft(draft, materialId) {
+  if (draft.isSupply) return null;
+  if (draft.closedVials === '' || draft.closedVials == null || draft.openVials === '' || draft.openVials == null) {
+    return inventoryError(materialId, 'اكتب عدد الفيالات المقفولة والمفتوحة، حتى لو إحدى الخانتين صفر، أو اختر «مستلزمات / ليس فيالات».');
+  }
+  const closed = Number(draft.closedVials);
+  const open = Number(draft.openVials);
+  if (!Number.isFinite(closed) || !Number.isFinite(open) || closed < 0 || open < 0) {
+    return inventoryError(materialId, 'عدد الفيالات المقفولة والمفتوحة يجب أن يكون صفرًا أو رقمًا موجبًا.');
+  }
+  if (closed + open <= 0) return inventoryError(materialId, 'يجب تسجيل فيال مقفول أو مفتوح واحد على الأقل، أو اختيار «مستلزمات / ليس فيالات».');
+  return null;
+}
+
 function validateExpiryDraft(draft, totalQuantity, materialId) {
   if (draft.isSupply) return null;
   if (!Array.isArray(draft.batches) || !draft.batches.length) return inventoryError(materialId, 'أضف تاريخ صلاحية واحدًا على الأقل، أو اختر «مستلزمات — بدون صلاحية».');
@@ -573,7 +603,7 @@ function scheduleSave(materialId, card, draft, delay = 500) {
     return;
   }
   const quantity = evaluateExpression(draft.expression);
-  const draftError = validateQuantityDraft(materialId, quantity) || validateExpiryDraft(draft, quantity, materialId);
+  const draftError = validateQuantityDraft(materialId, quantity) || validateVialDraft(draft, materialId) || validateExpiryDraft(draft, quantity, materialId);
   if (draftError) {
     markInventoryCardError(card, draftError);
     status.textContent = draftError;
@@ -594,7 +624,7 @@ async function saveEntry(materialId, card, draft, rethrow = false) {
   let uploadedImagePath = null;
   try {
     const quantity = evaluateExpression(draft.expression);
-    const draftError = validateQuantityDraft(materialId, quantity) || validateExpiryDraft(draft, quantity, materialId);
+    const draftError = validateQuantityDraft(materialId, quantity) || validateVialDraft(draft, materialId) || validateExpiryDraft(draft, quantity, materialId);
     if (draftError) throw new Error(draftError);
     const expiryBatches = draft.isSupply ? [] : draft.batches.map(batch => ({
       expiration_date: batch.expiration_date,
@@ -624,6 +654,9 @@ async function saveEntry(materialId, card, draft, rethrow = false) {
       expiration_date: earliestDate,
       expiry_batches: expiryBatches,
       is_supply: draft.isSupply,
+      closed_vials: draft.isSupply ? null : Number(draft.closedVials),
+      open_vials: draft.isSupply ? null : Number(draft.openVials),
+      notes: draft.notes.trim() || null,
       image_path: imagePath,
     }, { onConflict: 'session_id,material_id,created_by' });
     if (error) throw error;
@@ -706,6 +739,12 @@ async function finishMyPart() {
 }
 
 function validateDrafts() {
+  const incompleteSaved = state.snapshot.entries.find(entry => entry.created_by === state.profile.id
+    && !entry.is_supply && (entry.closed_vials == null || entry.open_vials == null));
+  if (incompleteSaved && !state.drafts.has(incompleteSaved.material_id)) {
+    const card = state.root.querySelector(`[data-material-id="${incompleteSaved.material_id}"]`);
+    return { card, message: inventoryError(incompleteSaved.material_id, 'أكمل عدد الفيالات المقفولة والمفتوحة قبل إنهاء الجرد.'), target: card?.querySelector('[data-entry-closed-vials]') };
+  }
   for (const [materialId, draft] of state.drafts) {
     const card = state.root.querySelector(`[data-material-id="${materialId}"]`);
     if (!draft.expression.trim()) {
@@ -715,7 +754,7 @@ function validateDrafts() {
     }
     try {
       const quantity = evaluateExpression(draft.expression);
-      const quantityError = validateQuantityDraft(materialId, quantity);
+      const quantityError = validateQuantityDraft(materialId, quantity) || validateVialDraft(draft, materialId);
       if (quantityError) return { card, message: quantityError, target: card.querySelector('[data-entry-expression]') };
       const expiryError = validateExpiryDraft(draft, quantity, materialId);
       if (expiryError) return { card, message: expiryError, target: findInventoryErrorTarget(card, draft) };
@@ -771,7 +810,7 @@ function draftReady(draft, materialId) {
   if (!draft?.expression.trim()) return false;
   try {
     const quantity = evaluateExpression(draft.expression);
-    return !validateQuantityDraft(materialId, quantity) && !validateExpiryDraft(draft, quantity, materialId);
+    return !validateQuantityDraft(materialId, quantity) && !validateVialDraft(draft, materialId) && !validateExpiryDraft(draft, quantity, materialId);
   } catch {
     return false;
   }
@@ -807,12 +846,19 @@ function refreshSession() {
 }
 
 async function getSnapshot(sessionId) {
-  const [snapshotResult, varianceResult] = await Promise.all([
+  const [snapshotResult, varianceResult, vialResult, sessionResult] = await Promise.all([
     supabase.rpc('inventory_session_snapshot', { target_session: sessionId }),
     supabase.rpc('inventory_session_variance', { target_session: sessionId }),
+    supabase.from('inventory_entries').select('id,closed_vials,open_vials,notes').eq('session_id', sessionId),
+    supabase.from('inventory_sessions').select('id,inventory_date').eq('id', sessionId).single(),
   ]);
   if (snapshotResult.error) throw snapshotResult.error;
   if (varianceResult.error) throw varianceResult.error;
+  if (vialResult.error) throw vialResult.error;
+  if (sessionResult.error) throw sessionResult.error;
+  const vialDetails = new Map((vialResult.data || []).map(entry => [entry.id, entry]));
+  snapshotResult.data.entries = (snapshotResult.data.entries || []).map(entry => ({ ...entry, ...vialDetails.get(entry.id) }));
+  snapshotResult.data.session.inventory_date = sessionResult.data.inventory_date;
   snapshotResult.data.stock_variance = varianceResult.data || [];
   return snapshotResult.data;
 }
@@ -821,9 +867,13 @@ function prefetchInventoryReports(force = false) {
   if (state.reportLoadPromise && !force) return state.reportLoadPromise;
   state.reportLoadPromise = supabase
     .rpc('list_inventory_sessions', { target_branch: state.profile.branch_id, max_rows: 100 })
-    .then(({ data, error }) => {
+    .then(async ({ data, error }) => {
       if (error) throw error;
-      state.reportSessions = data || [];
+      const sessions = data || [];
+      const { data: dates, error: datesError } = await supabase.from('inventory_sessions').select('id,inventory_date').eq('branch_id', state.profile.branch_id);
+      if (datesError) throw datesError;
+      const inventoryDates = new Map((dates || []).map(session => [session.id, session.inventory_date]));
+      state.reportSessions = sessions.map(session => ({ ...session, inventory_date: inventoryDates.get(session.id) }));
       return state.reportSessions;
     })
     .finally(() => { state.reportLoadPromise = null; });
@@ -897,7 +947,7 @@ function drawReportSessions(box, sessions) {
   const canExportAll = hasInventoryReportPermission('inventory_all_reports');
   box.innerHTML = `<div class="inventory-report-head"><div><h3>تقارير جرد ${escapeHtml(state.profile.branch_name)}</h3><p>الملخص، تفاصيل كل موظف، تنبيهات الصلاحية والأصناف التي لم تُجرد.</p></div><div class="report-actions">${canExportAll ? '<button class="btn gold mini" id="export-all-branches-inventory">Excel أحدث جرد لكل الفروع ↓</button>' : ''}<button class="btn ghost mini" id="refresh-inventory-reports">تحديث</button></div></div>
     <div class="inventory-report-list">${sessions.length ? sessions.map(session => `<button data-report-session="${session.id}">
-      <span><b>${formatDateTime(session.created_at)}</b><small>بدأ بواسطة ${escapeHtml(session.created_by_name)}</small></span>
+      <span><b>${formatInventorySessionDate(session)}</b><small>بدأ بواسطة ${escapeHtml(session.created_by_name)}</small></span>
       <span><strong>${session.material_count}</strong><small>صنف</small></span>
       <span><strong>${session.participant_count}</strong><small>مشارك</small></span>
       <span><strong>${money(session.total_quantity)}</strong><small>إجمالي الكميات</small></span>
@@ -930,13 +980,15 @@ async function openReport(sessionId, trigger) {
     state.reportSnapshot = snapshot;
     const summary = summarizeEntries(snapshot.entries);
     const varianceByMaterial = new Map((snapshot.stock_variance || []).map(row => [row.material_id, row]));
+    const materialById = new Map(state.materials.map(material => [material.id, material]));
+    const inventoryCostValue = (snapshot.stock_variance || []).reduce((sum, row) => sum + Number(row.actual_quantity || 0) * Number(materialById.get(row.material_id)?.cost_price || 0), 0);
     const uncounted = uncountedMaterials(snapshot);
     const expiryAlerts = flattenEntryBatches(snapshot.entries).filter(batch => {
       const status = expirationStatus(batch.expiration_date, batch.is_supply);
       return status.level === 'expired' || status.level === 'warning';
     });
     view.innerHTML = `<section class="inventory-report panel">
-      <div class="panel-head gold-line"><div><h3>جرد ${escapeHtml(snapshot.session.branch_name)}</h3><p>${formatDateTime(snapshot.session.created_at)} · ${snapshot.participants.length} مشارك</p></div>
+      <div class="panel-head gold-line"><div><h3>جرد ${escapeHtml(snapshot.session.branch_name)}</h3><p>${formatInventorySessionDate(snapshot.session)} · ${snapshot.participants.length} مشارك</p></div>
         <div class="report-actions"><button class="btn gold mini" data-inventory-export="summary">Excel تلخيصي شامل ↓</button><button class="btn ghost mini" data-inventory-export="detailed">Excel تفصيلي شامل ↓</button></div>
       </div>
       <div class="inventory-report-metrics">
@@ -944,23 +996,25 @@ async function openReport(sessionId, trigger) {
         <article class="${uncounted.length ? 'warning' : ''}"><span>لم يتم جردها</span><strong>${uncounted.length}</strong><small>موجودة في شيت منفصل</small></article>
         <article class="${expiryAlerts.length ? 'danger' : ''}"><span>تنبيهات الصلاحية</span><strong>${expiryAlerts.length}</strong><small>منتهي أو أقل من 3 شهور</small></article>
         <article><span>إجمالي الكميات</span><strong>${money(snapshot.entries.reduce((sum, entry) => sum + Number(entry.quantity), 0))}</strong><small>${snapshot.entries.length} تسجيل</small></article>
+        <article><span>قيمة المخزون بالتكلفة</span><strong>${money(inventoryCostValue)} ج.م</strong><small>بعيدًا عن سعر البيع</small></article>
       </div>
       <div class="inventory-report-block"><h4>التقرير التلخيصي وفروق المخزون</h4><p>الرصيد الدفتري = أول المدة + الإضافات − الصرف. الفرق الموجب زيادة والسالب عجز.</p>
-        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الكود</th><th>الوحدة</th><th>أول المدة</th><th>الإضافات</th><th>الصرف</th><th>الرصيد الدفتري</th><th>الجرد الفعلي</th><th>العجز / الزيادة</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th></tr></thead><tbody>${summary.map((row, index) => {
+        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الكود</th><th>الوحدة</th><th>أول المدة</th><th>الإضافات</th><th>الصرف</th><th>الرصيد الدفتري</th><th>الجرد الفعلي</th><th>العجز / الزيادة</th><th>تكلفة الوحدة</th><th>قيمة المخزون</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th></tr></thead><tbody>${summary.map((row, index) => {
           const batches = aggregateExpiryBatches(row.entries);
           const worst = worstExpiryStatus(batches);
           const stock = varianceByMaterial.get(row.material_id) || {};
           const variance = Number(stock.variance_quantity || 0);
+          const costPrice = Number(materialById.get(row.material_id)?.cost_price || 0);
           const varianceLabel = variance > 0 ? `زيادة ${money(variance)}` : variance < 0 ? `عجز ${money(Math.abs(variance))}` : 'مطابق';
-          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${money(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${money(stock.expected_quantity)}</b></td><td><b>${money(row.quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td><div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td></tr>`;
-        }).join('') || '<tr><td colspan="13"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
+          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${money(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${money(stock.expected_quantity)}</b></td><td><b>${money(row.quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td>${money(costPrice)} ج.م</td><td><b>${money(Number(row.quantity) * costPrice)} ج.م</b></td><td><div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td></tr>`;
+        }).join('') || '<tr><td colspan="15"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
       </div>
       <div class="inventory-report-block"><h4>التقرير التفصيلي</h4><p>كمية وعملية كل موظف بشكل منفصل.</p>
-        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الموظف</th><th>العملية المكتوبة</th><th>الكمية</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th><th>الصورة</th></tr></thead><tbody>${snapshot.entries.map((entry, index) => {
+        <div class="table-wrap"><table class="data-table inventory-report-table"><thead><tr><th>#</th><th>الفرع</th><th>الصنف</th><th>الموظف</th><th>العملية المكتوبة</th><th>الكمية</th><th>فيال مقفول</th><th>فيال مفتوح</th><th>الملاحظات</th><th>توزيع الصلاحية والكميات</th><th>المتبقي</th><th>الصورة</th></tr></thead><tbody>${snapshot.entries.map((entry, index) => {
           const batches = entryExpiryBatches(entry);
           const worst = worstExpiryStatus(entry.is_supply ? [{ is_supply: true }] : batches);
-          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td><span class="row-title">${escapeHtml(entry.material_name)}</span><small class="row-sub">${escapeHtml(entry.material_code)} · ${escapeHtml(entry.material_unit)}</small></td><td>${escapeHtml(entry.created_by_name)}</td><td dir="ltr">${escapeHtml(entry.quantity_expression)}</td><td><b>${money(entry.quantity)}</b></td><td><div class="report-expiry-list">${entry.is_supply ? '<span><b>مستلزمات</b><small>كل الكمية</small></span>' : batches.map(batch => `<span><b>${escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(entry.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${entry.is_supply ? '<span class="expiry-pill supply">بدون صلاحية</span>' : batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, false); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td><td>${entry.image_path ? `<button class="btn primary mini" type="button" data-view-entry-image="${escapeHtml(entry.image_path)}">فتح الصورة</button>` : '—'}</td></tr>`;
-        }).join('') || '<tr><td colspan="9"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
+          return `<tr class="expiry-row-${worst.level}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td><span class="row-title">${escapeHtml(entry.material_name)}</span><small class="row-sub">${escapeHtml(entry.material_code)} · ${escapeHtml(entry.material_unit)}</small></td><td>${escapeHtml(entry.created_by_name)}</td><td dir="ltr">${escapeHtml(entry.quantity_expression)}</td><td><b>${money(entry.quantity)}</b></td><td>${entry.is_supply ? '—' : money(entry.closed_vials)}</td><td>${entry.is_supply ? '—' : money(entry.open_vials)}</td><td>${escapeHtml(entry.notes || '—')}</td><td><div class="report-expiry-list">${entry.is_supply ? '<span><b>مستلزمات</b><small>كل الكمية</small></span>' : batches.map(batch => `<span><b>${escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(entry.material_unit)}</small></span>`).join('')}</div></td><td><div class="report-expiry-statuses">${entry.is_supply ? '<span class="expiry-pill supply">بدون صلاحية</span>' : batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, false); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div></td><td>${entry.image_path ? `<button class="btn primary mini" type="button" data-view-entry-image="${escapeHtml(entry.image_path)}">فتح الصورة</button>` : '—'}</td></tr>`;
+        }).join('') || '<tr><td colspan="12"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
       </div>
       <div class="inventory-report-block"><h4>أصناف لم يتم جردها</h4><p>هذه الأصناف موجودة في قائمة الفرع ولم يسجل عليها أي موظف كمية.</p>
         <div class="inventory-uncounted-grid">${uncounted.length ? uncounted.map(material => `<span><b>${escapeHtml(material.name)}</b><small>${escapeHtml(snapshot.session.branch_name)} · ${escapeHtml(material.code)} · ${escapeHtml(material.unit)}</small></span>`).join('') : '<div class="empty-state compact-empty">تم جرد كل الأصناف ✓</div>'}</div>
@@ -1079,6 +1133,7 @@ async function exportAllBranchesExcel(event) {
         imageLinks,
       );
     });
+    buildBranchesValuationExcelSheet(workbook, available);
 
     const uncountedAll = available.flatMap(({ branch, snapshot }) =>
       uncountedMaterials(snapshot).map(material => ({ ...material, branch: branch.name })));
@@ -1192,7 +1247,7 @@ function buildInventoryExcelSheet(workbook, sheetName, title, rows, snapshot, im
   sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
   sheet.getRow(1).height = 38;
   sheet.mergeCells('A2:K2');
-  sheet.getCell('A2').value = `الفرع: ${snapshot.session.branch_name}   |   تاريخ الجرد: ${formatDateTime(snapshot.session.created_at)}   |   المشاركون: ${snapshot.participants.length}`;
+  sheet.getCell('A2').value = `الفرع: ${snapshot.session.branch_name}   |   تاريخ الجرد: ${formatInventorySessionDate(snapshot.session)}   |   المشاركون: ${snapshot.participants.length}`;
   sheet.getCell('A2').font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
   sheet.getCell('A2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
   sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1289,37 +1344,58 @@ function buildInventoryVarianceExcelSheet(workbook, snapshot) {
   const sheet = workbook.addWorksheet('العجز والزيادة', {
     views: [{ rightToLeft: true, showGridLines: false, state: 'frozen', ySplit: 4 }],
   });
-  sheet.mergeCells('A1:J1');
+  sheet.mergeCells('A1:L1');
   sheet.getCell('A1').value = `ctrl. | فروق مخزون ${snapshot.session.branch_name}`;
   sheet.getCell('A1').font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FFFFFFFF' } };
   sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF172554' } };
   sheet.getCell('A1').alignment = { horizontal: 'center' };
-  sheet.mergeCells('A2:J2');
+  sheet.mergeCells('A2:L2');
   sheet.getCell('A2').value = 'الرصيد الدفتري = أول المدة + الإضافات − الصرف | الفرق = الجرد الفعلي − الرصيد الدفتري';
   sheet.getCell('A2').alignment = { horizontal: 'center' };
-  sheet.getRow(4).values = ['#', 'الكود', 'الصنف', 'الوحدة', 'أول المدة', 'الإضافات', 'الصرف', 'الرصيد الدفتري', 'الجرد الفعلي', 'العجز / الزيادة'];
+  sheet.getRow(4).values = ['#', 'الكود', 'الصنف', 'الوحدة', 'أول المدة', 'الإضافات', 'الصرف', 'الرصيد الدفتري', 'الجرد الفعلي', 'العجز / الزيادة', 'تكلفة الوحدة', 'قيمة المخزون'];
   sheet.getRow(4).eachCell(cell => {
     cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
     cell.alignment = { horizontal: 'center' };
   });
-  [8, 16, 30, 12, 14, 14, 14, 16, 16, 18].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
+  [8, 16, 30, 12, 14, 14, 14, 16, 16, 18, 15, 18].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
   const materials = new Map(state.materials.map(material => [material.id, material]));
   (snapshot.stock_variance || []).forEach((stock, index) => {
     const material = materials.get(stock.material_id) || {};
     const variance = Number(stock.variance_quantity || 0);
+    const costPrice = Number(material.cost_price || 0);
     const row = sheet.getRow(index + 5);
-    row.values = [index + 1, material.code || '', material.name || '', material.unit || '', Number(stock.opening_quantity || 0), Number(stock.additions_quantity || 0), Number(stock.consumption_quantity || 0), Number(stock.expected_quantity || 0), Number(stock.actual_quantity || 0), variance];
+    row.values = [index + 1, material.code || '', material.name || '', material.unit || '', Number(stock.opening_quantity || 0), Number(stock.additions_quantity || 0), Number(stock.consumption_quantity || 0), Number(stock.expected_quantity || 0), Number(stock.actual_quantity || 0), variance, costPrice, Number(stock.actual_quantity || 0) * costPrice];
     row.eachCell({ includeEmpty: true }, cell => {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: variance < 0 ? 'FFFEE2E2' : variance > 0 ? 'FFFEF3C7' : 'FFF0FDF4' } };
     });
-    for (let column = 5; column <= 10; column += 1) row.getCell(column).numFmt = '#,##0.00';
+    for (let column = 5; column <= 12; column += 1) row.getCell(column).numFmt = '#,##0.00';
   });
   const lastRow = Math.max(5, (snapshot.stock_variance || []).length + 4);
-  sheet.autoFilter = { from: 'A4', to: `J${lastRow}` };
-  sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printArea: `A1:J${lastRow}` };
+  sheet.autoFilter = { from: 'A4', to: `L${lastRow}` };
+  sheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printArea: `A1:L${lastRow}` };
+}
+
+function buildBranchesValuationExcelSheet(workbook, available) {
+  const materialById = new Map(state.materials.map(material => [material.id, material]));
+  const sheet = workbook.addWorksheet('قيمة مخزون الفروع', { views: [{ rightToLeft: true, showGridLines: false }] });
+  sheet.getRow(1).values = ['الفرع', 'تاريخ آخر جرد', 'عدد الأصناف', 'قيمة المخزون بالتكلفة'];
+  sheet.getRow(1).eachCell(cell => {
+    cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF172554' } };
+    cell.alignment = { horizontal: 'center' };
+  });
+  available.forEach(({ branch, snapshot }, index) => {
+    const rows = snapshot.stock_variance || [];
+    const value = rows.reduce((sum, stock) => sum + Number(stock.actual_quantity || 0) * Number(materialById.get(stock.material_id)?.cost_price || 0), 0);
+    const row = sheet.getRow(index + 2);
+    row.values = [branch.name, formatInventorySessionDate(snapshot.session), rows.length, value];
+    row.getCell(4).numFmt = '#,##0.00 "ج.م"';
+    row.eachCell(cell => { cell.alignment = { horizontal: 'center' }; });
+  });
+  [24, 24, 16, 24].forEach((width, index) => { sheet.getColumn(index + 1).width = width; });
 }
 
 function buildUncountedExcelSheet(workbook, materials, snapshot) {
@@ -1333,7 +1409,7 @@ function buildUncountedExcelSheet(workbook, materials, snapshot) {
   sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
   sheet.getRow(1).height = 36;
   sheet.mergeCells('A2:F2');
-  sheet.getCell('A2').value = `فرع ${snapshot.session.branch_name} · ${formatDateTime(snapshot.session.created_at)} · العدد ${materials.length}`;
+  sheet.getCell('A2').value = `فرع ${snapshot.session.branch_name} · ${formatInventorySessionDate(snapshot.session)} · العدد ${materials.length}`;
   sheet.getCell('A2').alignment = { horizontal: 'center' };
   sheet.getRow(4).values = ['#', 'الفرع', 'الكود', 'اسم الصنف', 'الفئة', 'الوحدة'];
   sheet.getRow(4).eachCell(cell => {
@@ -1598,6 +1674,11 @@ function searchScore(text, query, words = null) {
 
 function formatDateTime(value) {
   return new Date(value).toLocaleString('ar-EG-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function formatInventorySessionDate(session) {
+  if (!session?.inventory_date) return formatDateTime(session?.created_at);
+  return new Date(`${session.inventory_date}T12:00:00`).toLocaleDateString('ar-EG-u-nu-latn', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 function formatTime(value) {

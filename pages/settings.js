@@ -1,5 +1,5 @@
 import { escapeHtml, toast, confirmDialog, supabase } from '../supabase.js?v=20260801-audit-context';
-import { list, insert, remove } from '../data.js?v=20260801-reception-features';
+import { list, insert, update, remove } from '../data.js?v=20260901-cost-vials-v1';
 
 const pageLabels = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد — فتح الصفحة', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
 const actionLabels = {
@@ -399,10 +399,23 @@ function chooseHistoryScope(materialName, usage, allLabel, futureLabel) {
 
 async function materialsTab(box) {
   const rows = (await list('materials')).filter(row => !row.is_temp && !row.archived_at);
-  box.innerHTML = `<div class="panel-body"><form id="material-form" class="form-grid"><div class="field"><label>اسم المادة<input name="name" required></label></div><div class="field"><label>الكود<input name="code" required></label></div><div class="field"><label>الوحدة<input name="unit" placeholder="ml / gm / Pack" required></label></div><div class="field"><label>الفئة<input name="category"></label></div><button class="btn primary">إضافة مادة</button></form><div class="field" style="margin-top:18px"><label>بحث<input id="material-filter" placeholder="ابحث بالاسم أو الكود أو الباركود أو الفئة"></label></div></div><div id="materials-table"></div>`;
+  box.innerHTML = `<div class="panel-body"><form id="material-form" class="form-grid"><div class="field"><label>اسم المادة<input name="name" required></label></div><div class="field"><label>الكود<input name="code" required></label></div><div class="field"><label>الوحدة<input name="unit" placeholder="ml / gm / Pack" required></label></div><div class="field"><label>الفئة<input name="category"></label></div><div class="field"><label>سعر تكلفة الوحدة <em>*</em><input name="cost_price" type="number" min="0" step="any" value="0" required></label></div><button class="btn primary">إضافة مادة</button></form><div class="field" style="margin-top:18px"><label>بحث<input id="material-filter" placeholder="ابحث بالاسم أو الكود أو الباركود أو الفئة"></label></div></div><div id="materials-table"></div>`;
   const draw = filter => {
     const shown = rows.filter(row => !filter || `${row.name} ${row.code} ${row.barcode} ${row.category}`.toLowerCase().includes(filter.toLowerCase()));
-    box.querySelector('#materials-table').innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr><th>المادة</th><th>الكود / الباركود</th><th>الوحدة</th><th>الفئة</th><th>السعر</th><th>الحالة</th><th></th></tr></thead><tbody>${shown.map(row => `<tr><td class="row-title">${escapeHtml(row.name)}</td><td>${escapeHtml(row.code)}<small class="row-sub">${escapeHtml(row.barcode || '—')}</small></td><td>${escapeHtml(row.unit)}</td><td>${escapeHtml(row.category || '—')}</td><td>${Number(row.default_price || 0).toLocaleString('ar-EG-u-nu-latn')}</td><td><span class="badge ${row.is_temp ? 'temp' : 'client'}">${row.is_temp ? 'مؤقت' : 'دائم'}</span></td><td><button class="delete-icon" data-delete="${row.id}">×</button></td></tr>`).join('')}</tbody></table></div>`;
+    box.querySelector('#materials-table').innerHTML = `<div class="table-wrap"><table class="data-table"><thead><tr><th>المادة</th><th>الكود / الباركود</th><th>الوحدة</th><th>الفئة</th><th>سعر التكلفة</th><th>الحالة</th><th></th></tr></thead><tbody>${shown.map(row => `<tr><td class="row-title">${escapeHtml(row.name)}</td><td>${escapeHtml(row.code)}<small class="row-sub">${escapeHtml(row.barcode || '—')}</small></td><td>${escapeHtml(row.unit)}</td><td>${escapeHtml(row.category || '—')}</td><td><div class="cost-price-editor"><input type="number" min="0" step="any" value="${Number(row.cost_price || 0)}" data-cost-price="${row.id}"><button class="btn primary mini" type="button" data-save-cost="${row.id}">حفظ</button></div></td><td><span class="badge ${row.is_temp ? 'temp' : 'client'}">${row.is_temp ? 'مؤقت' : 'دائم'}</span></td><td><button class="delete-icon" data-delete="${row.id}">×</button></td></tr>`).join('')}</tbody></table></div>`;
+    box.querySelectorAll('[data-save-cost]').forEach(button => button.onclick = async () => {
+      const input = box.querySelector(`[data-cost-price="${button.dataset.saveCost}"]`);
+      const costPrice = Number(input.value);
+      if (!Number.isFinite(costPrice) || costPrice < 0) return toast('اكتب سعر تكلفة صحيحًا', 'warning');
+      button.disabled = true;
+      try {
+        await update('materials', button.dataset.saveCost, { cost_price: costPrice });
+        const material = rows.find(item => item.id === button.dataset.saveCost);
+        if (material) material.cost_price = costPrice;
+        toast('تم حفظ سعر تكلفة المادة');
+      } catch (error) { toast(error.message, 'error'); }
+      finally { button.disabled = false; }
+    });
     wireDelete(box.querySelector('#materials-table'), 'materials', () => materialsTab(box), 'المادة');
   };
   draw('');
@@ -410,7 +423,7 @@ async function materialsTab(box) {
   box.querySelector('form').onsubmit = async event => {
     event.preventDefault();
     const form = event.currentTarget;
-    await insert('materials', { name: form.name.value.trim(), code: form.code.value.trim().toUpperCase(), unit: form.unit.value.trim(), category: form.category.value.trim(), default_price: 0, scope: 'default', is_temp: false });
+    await insert('materials', { name: form.name.value.trim(), code: form.code.value.trim().toUpperCase(), unit: form.unit.value.trim(), category: form.category.value.trim(), default_price: 0, cost_price: Number(form.cost_price.value || 0), scope: 'default', is_temp: false });
     toast('تمت إضافة المادة');
     materialsTab(box);
   };
