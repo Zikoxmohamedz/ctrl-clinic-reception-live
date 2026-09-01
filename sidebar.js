@@ -7,6 +7,29 @@ import { renderReports } from './pages/reports.js?v=20260730-sales-total-v11';
 import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
+
+const APP_VERSION = '2026.09.01.2';
+let versionCheckTimer;
+
+async function checkForRequiredRefresh() {
+  try {
+    const response = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' });
+    if (!response.ok) return;
+    const release = await response.json();
+    if (!release.version || release.version === APP_VERSION) return;
+    clearInterval(versionCheckTimer);
+    const overlay = document.createElement('div');
+    overlay.className = 'forced-refresh-overlay';
+    overlay.innerHTML = `<div><span class="forced-refresh-spinner"></span><h2>يوجد تحديث إجباري للنظام</h2><p>${release.message || 'سيتم تحميل النسخة الجديدة الآن.'}</p><small>بياناتك المحفوظة لن تضيع. جارٍ إعادة التحميل...</small></div>`;
+    document.body.appendChild(overlay);
+    setTimeout(() => location.reload(), 2500);
+  } catch (error) {
+    console.warn('Version check failed', error);
+  }
+}
+
+checkForRequiredRefresh();
+versionCheckTimer = setInterval(checkForRequiredRefresh, 30000);
 import { list, hydrate } from './data.js?v=20260801-reception-features';
 
 const profile = JSON.parse(sessionStorage.getItem('ctrl_profile') || 'null');
