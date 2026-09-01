@@ -18,9 +18,13 @@ alter table public.inventory_entries
 alter table public.inventory_sessions
   add column if not exists inventory_date date not null default current_date;
 
--- Requested historical presentation date. Technical timestamps stay intact for ordering/audit.
+-- July's historical counts are presented at the July month end.
+-- Later counts (including yesterday's count) keep their real business date.
 update public.inventory_sessions
-set inventory_date = date '2026-07-31'
+set inventory_date = case
+  when (created_at at time zone 'Africa/Cairo')::date < date '2026-08-01' then date '2026-07-31'
+  else (created_at at time zone 'Africa/Cairo')::date
+end
 where status = 'completed';
 
 update public.inventory_sessions
