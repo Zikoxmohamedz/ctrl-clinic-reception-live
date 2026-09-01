@@ -58,13 +58,14 @@ as $$
 declare
   target_branch uuid;
   target_cutoff timestamptz;
+  target_inventory_date date;
 begin
   if auth.uid() is null or not public.can_access_inventory_session(target_session) then
     raise exception 'غير مسموح بعرض فروق جلسة الجرد';
   end if;
 
-  select s.branch_id, s.created_at
-  into target_branch, target_cutoff
+  select s.branch_id, s.created_at, coalesce(s.inventory_date, (s.created_at at time zone 'Africa/Cairo')::date)
+  into target_branch, target_cutoff, target_inventory_date
   from public.inventory_sessions s
   where s.id = target_session;
 
@@ -83,24 +84,26 @@ begin
       and prior_session.status = 'completed'
       and prior_session.completed_at < target_cutoff
     union
-    select a.material_id from public.stock_additions a where a.branch_id = target_branch and a.created_at < target_cutoff
+    select a.material_id from public.stock_additions a where a.branch_id = target_branch and a.date <= target_inventory_date
     union
-    select c.material_id from public.consumption_records c where c.branch_id = target_branch and c.created_at < target_cutoff
+    select c.material_id from public.consumption_records c where c.branch_id = target_branch and c.date <= target_inventory_date
   ), baseline as (
     select mis.material_id,
            coalesce(prev.actual_quantity, o.quantity, 0)::numeric as opening_quantity,
-           coalesce(prev.completed_at, o.opened_at, target_cutoff) as started_at
+           coalesce(prev.created_at, o.opened_at, target_cutoff) as started_at,
+           coalesce(prev.inventory_date, (o.opened_at at time zone 'Africa/Cairo')::date, target_inventory_date) as started_date
     from materials_in_scope mis
     left join public.inventory_opening_balances o
       on o.branch_id = target_branch and o.material_id = mis.material_id
     left join lateral (
-      select sum(e.quantity)::numeric actual_quantity, s.completed_at
+      select sum(e.quantity)::numeric actual_quantity, s.created_at, s.completed_at,
+             coalesce(s.inventory_date, (s.created_at at time zone 'Africa/Cairo')::date) inventory_date
       from public.inventory_sessions s
       join public.inventory_entries e on e.session_id = s.id and e.material_id = mis.material_id
       where s.branch_id = target_branch
         and s.status = 'completed'
         and s.completed_at < target_cutoff
-      group by s.id, s.completed_at
+      group by s.id, s.created_at, s.completed_at, s.inventory_date
       order by s.completed_at desc
       limit 1
     ) prev on true
@@ -108,10 +111,10 @@ begin
     select b.*,
       coalesce((select sum(a.quantity) from public.stock_additions a
                 where a.branch_id = target_branch and a.material_id = b.material_id
-                  and a.created_at >= b.started_at and a.created_at < target_cutoff), 0)::numeric additions,
+                  and a.date > b.started_date and a.date <= target_inventory_date), 0)::numeric additions,
       coalesce((select sum(c.quantity) from public.consumption_records c
                 where c.branch_id = target_branch and c.material_id = b.material_id
-                  and c.created_at >= b.started_at and c.created_at < target_cutoff), 0)::numeric consumption,
+                  and c.date > b.started_date and c.date <= target_inventory_date), 0)::numeric consumption,
       coalesce((select sum(e.quantity) from public.inventory_entries e
                 where e.session_id = target_session and e.material_id = b.material_id), 0)::numeric actual
     from baseline b
