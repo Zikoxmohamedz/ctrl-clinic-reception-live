@@ -8,21 +8,32 @@ import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.01.2';
+const APP_VERSION = '2026.09.01.3';
+const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
+
+function requireRefresh(release) {
+  if (document.querySelector('.forced-refresh-overlay')) return;
+  clearInterval(versionCheckTimer);
+  localStorage.setItem(VERSION_ACK_KEY, release.version);
+  const overlay = document.createElement('div');
+  overlay.className = 'forced-refresh-overlay';
+  overlay.innerHTML = `<div><span class="forced-refresh-spinner"></span><h2>يوجد تحديث إجباري للنظام</h2><p>${release.message || 'سيتم تحميل النسخة الجديدة الآن.'}</p><small>بياناتك المحفوظة لن تضيع. جارٍ إعادة التحميل...</small></div>`;
+  document.body.appendChild(overlay);
+  setTimeout(() => {
+    const url = new URL(location.href);
+    url.searchParams.set('app_version', release.version);
+    location.replace(url.toString());
+  }, 2500);
+}
 
 async function checkForRequiredRefresh() {
   try {
-    const response = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' });
+    const response = await fetch(new URL(`./version.json?t=${Date.now()}`, import.meta.url), { cache: 'no-store' });
     if (!response.ok) return;
     const release = await response.json();
-    if (!release.version || release.version === APP_VERSION) return;
-    clearInterval(versionCheckTimer);
-    const overlay = document.createElement('div');
-    overlay.className = 'forced-refresh-overlay';
-    overlay.innerHTML = `<div><span class="forced-refresh-spinner"></span><h2>يوجد تحديث إجباري للنظام</h2><p>${release.message || 'سيتم تحميل النسخة الجديدة الآن.'}</p><small>بياناتك المحفوظة لن تضيع. جارٍ إعادة التحميل...</small></div>`;
-    document.body.appendChild(overlay);
-    setTimeout(() => location.reload(), 2500);
+    if (!release.version) return;
+    if (release.version !== APP_VERSION || localStorage.getItem(VERSION_ACK_KEY) !== APP_VERSION) requireRefresh(release);
   } catch (error) {
     console.warn('Version check failed', error);
   }
