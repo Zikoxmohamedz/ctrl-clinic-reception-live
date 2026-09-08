@@ -950,7 +950,7 @@ function currentMonthValue() {
 
 function drawReportSessions(box, sessions) {
   const canExportAll = hasInventoryReportPermission('inventory_all_reports');
-  box.innerHTML = `<div class="inventory-report-head"><div><h3>تقارير جرد ${escapeHtml(state.profile.branch_name)}</h3><p>الملخص، تفاصيل كل موظف، تنبيهات الصلاحية والأصناف التي لم تُجرد.</p></div><div class="report-actions">${canExportAll ? '<button class="btn gold mini" id="export-all-branches-inventory">Excel أحدث جرد لكل الفروع ↓</button>' : ''}<button class="btn ghost mini" id="refresh-inventory-reports">تحديث</button></div></div>
+  box.innerHTML = `<div class="inventory-report-head"><div><h3>تقارير جرد ${escapeHtml(state.profile.branch_name)}</h3><p>الملخص، تفاصيل كل موظف، تنبيهات الصلاحية والأصناف التي لم تُجرد.</p></div><div class="report-actions">${canExportAll ? '<button class="btn gold mini" id="export-all-branches-inventory">Excel أحدث جرد لكل الفروع ↓</button><button class="btn gold mini" id="export-all-branches-history-inventory">سحب كل الجرود بالتواريخ (Excel) ↓</button>' : ''}<button class="btn ghost mini" id="refresh-inventory-reports">تحديث</button></div></div>
     <div class="inventory-report-list">${sessions.length ? sessions.map(session => `<button data-report-session="${session.id}">
       <span><b>${formatInventorySessionDate(session)}</b><small>بدأ بواسطة ${escapeHtml(session.created_by_name)}</small></span>
       <span><strong>${session.material_count}</strong><small>صنف</small></span>
@@ -960,7 +960,10 @@ function drawReportSessions(box, sessions) {
     </button>`).join('') : '<div class="empty-state">لا توجد جلسات جرد لهذا الفرع بعد</div>'}</div>
     <div id="inventory-report-view"></div>`;
   box.querySelectorAll('[data-report-session]').forEach(button => button.onclick = () => openReport(button.dataset.reportSession, button));
-  if (canExportAll) box.querySelector('#export-all-branches-inventory').onclick = exportAllBranchesExcel;
+  if (canExportAll) {
+    box.querySelector('#export-all-branches-inventory').onclick = exportAllBranchesExcel;
+    box.querySelector('#export-all-branches-history-inventory').onclick = exportAllBranchesHistoryChronologicalExcel;
+  }
   box.querySelector('#refresh-inventory-reports').onclick = async event => {
     event.currentTarget.disabled = true;
     try {
@@ -1185,6 +1188,217 @@ async function exportAllBranchesExcel(event) {
     toast(`تم تصدير جرد ${available.length} فرع في ملف واحد`);
   } catch (error) {
     toast(error.message, 'error');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+async function exportAllBranchesHistoryChronologicalExcel(event) {
+  if (!hasInventoryReportPermission('inventory_all_reports')) return toast('لا توجد صلاحية لتقرير الجرد المجمع', 'warning');
+  if (!window.ExcelJS) return toast('مكتبة تنسيق Excel غير متاحة', 'error');
+  const button = event.currentTarget;
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'جارٍ سحب كل الجرود لكل الفروع...';
+  try {
+    const allBranches = await list('branches');
+    const allowedIds = state.profile.role === 'admin'
+      ? new Set(allBranches.map(branch => branch.id))
+      : new Set(state.profile.branch_ids?.length ? state.profile.branch_ids : [state.profile.branch_id]);
+    const branches = allBranches.filter(branch => allowedIds.has(branch.id));
+    const branchHistory = await Promise.all(branches.map(async branch => {
+      const { data, error } = await supabase.rpc('list_inventory_sessions', { target_branch: branch.id, max_rows: 100 });
+      if (error) throw error;
+      const completed = (data || []).filter(session => session.status === 'completed');
+      const snapshots = await Promise.all(completed.map(session => getSnapshot(session.id)));
+      snapshots.sort((a, b) => new Date(a.session.completed_at || a.session.created_at) - new Date(b.session.completed_at || b.session.created_at));
+      return { branch, snapshots };
+    }));
+    const available = branchHistory.filter(item => item.snapshots.length > 0);
+    if (!available.length) return toast('لا توجد جلسات جرد مكتملة', 'warning');
+
+    button.textContent = 'جارٍ تجهيز ملف Excel المنسق...';
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'ctrl.';
+    workbook.created = new Date();
+    workbook.calcProperties.fullCalcOnLoad = true;
+    const usedNames = new Set();
+    const materialById = new Map((state.materials || []).map(m => [m.id, m]));
+
+    const masterRows = [];
+    available.forEach(({ branch, snapshots }) => {
+      snapshots.forEach(snapshot => {
+        const sDate = formatInventorySessionDate(snapshot.session);
+        const entries = snapshot.entries || [];
+        const variance = snapshot.stock_variance || [];
+        const varianceByMat = new Map(variance.map(v => [v.material_id, v]));
+        const allMatIds = [...new Set([...entries.map(e => e.material_id), ...variance.map(v => v.material_id)])];
+
+        allMatIds.forEach(mId => {
+          const mat = materialById.get(mId) || {};
+          const stock = varianceByMat.get(mId) || {};
+          const matEntries = entries.filter(e => e.material_id === mId);
+          const cost = Number(mat.cost_price || 0);
+          const actual = Number(stock.actual_quantity ?? matEntries.reduce((s, e) => s + Number(e.quantity || 0), 0));
+          const diff = Number(stock.variance_quantity || 0);
+          const val = actual * cost;
+          const notes = matEntries.flatMap(e => {
+            if (e.is_supply) return [`مستلزمات (${money(e.quantity)})`];
+            return (e.expiry_batches || []).map(b => `${b.expiration_date}: ${money(b.quantity)}`);
+          }).join(' | ') || (matEntries.map(e => e.notes).filter(Boolean).join(' | '));
+
+          masterRows.push({
+            branch: branch.name,
+            date: sDate,
+            code: mat.code || '',
+            name: mat.name || 'صنف غير معروف',
+            category: mat.category || '',
+            unit: mat.unit || '',
+            opening: Number(stock.opening_quantity || 0),
+            additions: Number(stock.additions_quantity || 0),
+            consumption: Number(stock.consumption_quantity || 0),
+            expected: Number(stock.expected_quantity || 0),
+            actual,
+            variance: diff,
+            status: diff < 0 ? 'عجز' : diff > 0 ? 'زيادة' : 'مطابق',
+            cost,
+            val,
+            notes,
+            creator: snapshot.session.created_by_name || '',
+          });
+        });
+      });
+    });
+
+    const masterSheet = workbook.addWorksheet('كل الجرود بالتواريخ والأرصدة', {
+      views: [{ rightToLeft: true, showGridLines: true, state: 'frozen', ySplit: 2 }]
+    });
+    masterSheet.getRow(1).values = [
+      'الفرع', 'تاريخ الجرد', 'الكود', 'الصنف', 'الفئة', 'الوحدة',
+      'رصيد أول المدة', 'الإضافات', 'الصرف', 'الرصيد المتوقع', 'الجرد الفعلي',
+      'العجز / الزيادة', 'الحالة', 'تكلفة الوحدة', 'قيمة المخزون', 'الملاحظات وتوزيع الصلاحية', 'القائم بالجرد'
+    ];
+    masterSheet.getRow(1).height = 28;
+    masterSheet.getRow(1).eachCell(cell => {
+      cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF142A55' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    masterRows.forEach((r, idx) => {
+      const row = masterSheet.getRow(idx + 2);
+      row.height = 22;
+      row.values = [
+        r.branch, r.date, r.code, r.name, r.category, r.unit,
+        r.opening, r.additions, r.consumption, r.expected, r.actual,
+        r.variance, r.status, r.cost, r.val, r.notes, r.creator
+      ];
+      row.eachCell((cell, colNumber) => {
+        cell.alignment = { horizontal: colNumber <= 2 || colNumber === 4 ? 'right' : 'center', vertical: 'middle' };
+        if (r.variance < 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+        else if (r.variance > 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        else cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: idx % 2 ? 'FFF3F6FA' : 'FFFFFFFF' } };
+      });
+      for (let col = 7; col <= 12; col++) row.getCell(col).numFmt = '#,##0.00';
+      row.getCell(14).numFmt = '#,##0.00';
+      row.getCell(15).numFmt = '#,##0.00';
+    });
+
+    [20, 15, 14, 28, 18, 12, 16, 14, 14, 16, 16, 16, 12, 14, 18, 30, 18].forEach((width, index) => {
+      masterSheet.getColumn(index + 1).width = width;
+    });
+    masterSheet.autoFilter = { from: 'A1', to: `Q${masterRows.length + 1}` };
+
+    const compSheet = workbook.addWorksheet('ملخص مقارنة الفروع والجرود', {
+      views: [{ rightToLeft: true, showGridLines: true, state: 'frozen', ySplit: 2 }]
+    });
+    compSheet.getRow(1).values = [
+      'الفرع', 'رقم الجرد', 'تاريخ الجرد', 'عدد الأصناف', 'إجمالي الكميات الفعلية',
+      'قيمة المخزون بالتكلفة', 'عدد أصناف العجز', 'كمية العجز', 'عدد أصناف الزيادة', 'كمية الزيادة', 'القائم بالجرد'
+    ];
+    compSheet.getRow(1).height = 28;
+    compSheet.getRow(1).eachCell(cell => {
+      cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB89A55' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    let compIdx = 2;
+    available.forEach(({ branch, snapshots }) => {
+      snapshots.forEach((snapshot, sIdx) => {
+        const sDate = formatInventorySessionDate(snapshot.session);
+        const variance = snapshot.stock_variance || [];
+        const totalActual = variance.reduce((s, v) => s + Number(v.actual_quantity || 0), 0);
+        const totalVal = variance.reduce((s, v) => s + Number(v.actual_quantity || 0) * Number(materialById.get(v.material_id)?.cost_price || 0), 0);
+        const shortages = variance.filter(v => Number(v.variance_quantity || 0) < 0);
+        const surpluses = variance.filter(v => Number(v.variance_quantity || 0) > 0);
+
+        const row = compSheet.getRow(compIdx++);
+        row.values = [
+          branch.name, `الجرد #${sIdx + 1}`, sDate, variance.length, totalActual,
+          totalVal, shortages.length, shortages.reduce((s, v) => s + Math.abs(Number(v.variance_quantity || 0)), 0),
+          surpluses.length, surpluses.reduce((s, v) => s + Number(v.variance_quantity || 0), 0),
+          snapshot.session.created_by_name || ''
+        ];
+        row.eachCell(c => { c.alignment = { horizontal: 'center', vertical: 'middle' }; });
+        row.getCell(5).numFmt = '#,##0.00';
+        row.getCell(6).numFmt = '#,##0.00';
+        row.getCell(8).numFmt = '#,##0.00';
+        row.getCell(10).numFmt = '#,##0.00';
+      });
+    });
+    [20, 14, 15, 14, 20, 22, 16, 16, 16, 16, 18].forEach((w, i) => { compSheet.getColumn(i + 1).width = w; });
+    compSheet.autoFilter = { from: 'A1', to: `K${compIdx}` };
+
+    available.forEach(({ branch, snapshots }) => {
+      const bSheet = workbook.addWorksheet(uniqueSheetName(`جرد ${branch.name}`, usedNames), {
+        views: [{ rightToLeft: true, showGridLines: true, state: 'frozen', ySplit: 2 }]
+      });
+      bSheet.getRow(1).values = [
+        'تاريخ الجرد', 'الكود', 'الصنف', 'الوحدة',
+        'رصيد أول المدة', 'الإضافات', 'الصرف', 'الرصيد المتوقع', 'الجرد الفعلي',
+        'العجز / الزيادة', 'الحالة', 'تكلفة الوحدة', 'قيمة المخزون', 'الملاحظات'
+      ];
+      bSheet.getRow(1).height = 26;
+      bSheet.getRow(1).eachCell(cell => {
+        cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF142A55' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+
+      const bRows = masterRows.filter(r => r.branch === branch.name);
+      bRows.forEach((r, idx) => {
+        const row = bSheet.getRow(idx + 2);
+        row.values = [
+          r.date, r.code, r.name, r.unit,
+          r.opening, r.additions, r.consumption, r.expected, r.actual,
+          r.variance, r.status, r.cost, r.val, r.notes
+        ];
+        row.eachCell((cell, col) => {
+          cell.alignment = { horizontal: col === 3 ? 'right' : 'center', vertical: 'middle' };
+          if (r.variance < 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+          else if (r.variance > 0) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+        });
+        for (let col = 5; col <= 10; col++) row.getCell(col).numFmt = '#,##0.00';
+        row.getCell(12).numFmt = '#,##0.00';
+        row.getCell(13).numFmt = '#,##0.00';
+      });
+      [15, 14, 28, 12, 16, 14, 14, 16, 16, 16, 12, 14, 18, 30].forEach((w, i) => { bSheet.getColumn(i + 1).width = w; });
+      bSheet.autoFilter = { from: 'A1', to: `N${bRows.length + 1}` };
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `سحب_كل_الجرود_والأرصدة_لكل_الفروع_${new Date().toLocaleDateString('en-CA')}.xlsx`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    toast(`تم تصدير سحبة كل الجرود والأرصدة بنجاح (${workbook.worksheets.length} شيت)`);
+  } catch (error) {
+    console.error(error);
+    toast(error.message || 'تعذر تصدير سحبة الجرود', 'error');
   } finally {
     button.disabled = false;
     button.textContent = originalText;
