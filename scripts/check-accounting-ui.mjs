@@ -38,6 +38,7 @@ try{
  assert.ok((await page.locator('#account-output tbody tr').count())>0);
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.local/accounting-reports-mobile.png',fullPage:true});
  await page.selectOption('#account-mobile-picker','dashboard');await page.locator('[data-dashboard-tab=replenishment]').first().click();assert.match(await page.locator('#account-title').innerText(),/التوريد/);await page.selectOption('#account-mobile-picker','dashboard');await page.screenshot({path:'.local/accounting-dashboard-mobile.png',fullPage:true});
+ const dashboardPrintPromise=page.waitForEvent('popup');await page.click('#account-print');const dashboardPrint=await dashboardPrintPromise;await dashboardPrint.waitForLoadState();await dashboardPrint.emulateMedia({media:'print'});assert.equal(await dashboardPrint.locator('.account-kpi:visible').count(),4);await dashboardPrint.close();
  await page.selectOption('[name=material]','');await page.selectOption('[name=branch]','');await page.click('button[type=submit]');await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('15 فرع'));
  const allDownloadPromise=page.waitForEvent('download');await page.click('[data-download=all]');await (await allDownloadPromise).saveAs('.local/all-branches-august-reports.xlsx');
  await page.evaluate(()=>window.failReport=true);await page.click('button[type=submit]');await page.waitForFunction(()=>document.querySelector('#account-status').textContent==='test failure');
