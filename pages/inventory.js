@@ -2,6 +2,9 @@ import { supabase, escapeHtml, toast, money, confirmDialog } from '../supabase.j
 import { insert, list } from '../data.js?v=20260801-reception-features';
 import { openTemporaryMaterial } from './temp-material.js?v=20260730-temp-save-v2';
 
+const stockValue = value => value == null ? 'غير متاح' : Number(value);
+const stockDisplay = value => value == null ? 'غير متاح' : money(value);
+
 const state = {
   root: null,
   profile: null,
@@ -1025,11 +1028,11 @@ async function openReport(sessionId, trigger) {
           const batches = aggregateExpiryBatches(row.entries);
           const worst = worstExpiryStatus(batches);
           const stock = varianceByMaterial.get(row.material_id) || {};
-          const variance = Number(stock.variance_quantity || 0);
+          const variance = stockValue(stock.variance_quantity);
           const costPrice = Number(materialById.get(row.material_id)?.cost_price || 0);
-          const varianceLabel = variance > 0 ? `زيادة ${money(variance)}` : variance < 0 ? `عجز ${money(Math.abs(variance))}` : 'مطابق';
+          const varianceLabel = stock.variance_quantity == null ? 'غير متاح' : variance > 0 ? `زيادة ${money(variance)}` : variance < 0 ? `عجز ${money(Math.abs(variance))}` : 'مطابق';
           const notCounted = row.entries.length === 0;
-          return `<tr class="${notCounted && variance < 0 ? 'inventory-shortage-row' : `expiry-row-${worst.level}`}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}${notCounted ? '<small class="row-sub">لم يتم جرده</small>' : ''}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${money(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${money(stock.expected_quantity)}</b></td><td><b>${money(stock.actual_quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td>${money(costPrice)} ج.م</td><td><b>${money(Number(stock.actual_quantity) * costPrice)} ج.م</b></td><td>${notCounted ? '<span class="badge danger">غير مجرود</span>' : `<div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div>`}</td><td>${notCounted ? '—' : `<div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div>`}</td></tr>`;
+          return `<tr class="${notCounted && variance < 0 ? 'inventory-shortage-row' : `expiry-row-${worst.level}`}"><td>${index + 1}</td><td>${escapeHtml(snapshot.session.branch_name)}</td><td class="row-title">${escapeHtml(row.material_name)}${notCounted ? '<small class="row-sub">لم يتم جرده</small>' : ''}</td><td>${escapeHtml(row.material_code)}</td><td>${escapeHtml(row.material_unit)}</td><td>${stockDisplay(stock.opening_quantity)}</td><td>${money(stock.additions_quantity)}</td><td>${money(stock.consumption_quantity)}</td><td><b>${stockDisplay(stock.expected_quantity)}</b></td><td><b>${stockDisplay(stock.actual_quantity)}</b></td><td><span class="badge ${variance < 0 ? 'danger' : variance > 0 ? 'temp' : 'client'}">${varianceLabel}</span></td><td>${money(costPrice)} ج.م</td><td><b>${(stock.actual_quantity == null ? 'غير متاح' : money(Number(stock.actual_quantity) * costPrice))} ج.م</b></td><td>${notCounted ? '<span class="badge danger">غير مجرود</span>' : `<div class="report-expiry-list">${batches.map(batch => `<span><b>${batch.is_supply ? 'مستلزمات' : escapeHtml(batch.expiration_date)}</b><small>${money(batch.quantity)} ${escapeHtml(row.material_unit)}</small></span>`).join('')}</div>`}</td><td>${notCounted ? '—' : `<div class="report-expiry-statuses">${batches.map(batch => { const expiry = expirationStatus(batch.expiration_date, batch.is_supply); return `<span class="expiry-pill ${expiry.level}">${escapeHtml(expiry.label)}</span>`; }).join('')}</div>`}</td></tr>`;
         }).join('') || '<tr><td colspan="15"><div class="empty-state">لا توجد كميات مسجلة</div></td></tr>'}</tbody></table></div>
       </div>
       <div class="inventory-report-block"><h4>التقرير التفصيلي</h4><p>كمية وعملية كل موظف بشكل منفصل.</p>
@@ -1124,7 +1127,7 @@ async function exportAllBranchesExcel(event) {
       if (error) throw error;
       const completed = (data || []).filter(session => session.status === 'completed');
       const snapshots = await Promise.all(completed.map(session => getSnapshot(session.id)));
-      snapshots.sort((a, b) => new Date(a.session.completed_at || a.session.created_at) - new Date(b.session.completed_at || b.session.created_at));
+      snapshots.sort((a, b) => String(a.session.inventory_date || a.session.created_at).localeCompare(String(b.session.inventory_date || b.session.created_at)));
       return { branch, snapshots };
     }));
     const available = branchHistory.filter(item => item.snapshots.length).map(item => ({ branch: item.branch, snapshot: item.snapshots.at(-1) }));
@@ -1212,7 +1215,7 @@ async function exportAllBranchesHistoryChronologicalExcel(event) {
       if (error) throw error;
       const completed = (data || []).filter(session => session.status === 'completed');
       const snapshots = await Promise.all(completed.map(session => getSnapshot(session.id)));
-      snapshots.sort((a, b) => new Date(a.session.completed_at || a.session.created_at) - new Date(b.session.completed_at || b.session.created_at));
+      snapshots.sort((a, b) => String(a.session.inventory_date || a.session.created_at).localeCompare(String(b.session.inventory_date || b.session.created_at)));
       return { branch, snapshots };
     }));
     const available = branchHistory.filter(item => item.snapshots.length > 0);
@@ -1241,7 +1244,7 @@ async function exportAllBranchesHistoryChronologicalExcel(event) {
           const matEntries = entries.filter(e => e.material_id === mId);
           const cost = Number(mat.cost_price || 0);
           const actual = Number(stock.actual_quantity ?? matEntries.reduce((s, e) => s + Number(e.quantity || 0), 0));
-          const diff = Number(stock.variance_quantity || 0);
+          const diff = stockValue(stock.variance_quantity);
           const val = actual * cost;
           const notes = matEntries.flatMap(e => {
             if (e.is_supply) return [`مستلزمات (${money(e.quantity)})`];
@@ -1255,13 +1258,13 @@ async function exportAllBranchesHistoryChronologicalExcel(event) {
             name: mat.name || 'صنف غير معروف',
             category: mat.category || '',
             unit: mat.unit || '',
-            opening: Number(stock.opening_quantity || 0),
+            opening: stockValue(stock.opening_quantity),
             additions: Number(stock.additions_quantity || 0),
             consumption: Number(stock.consumption_quantity || 0),
-            expected: Number(stock.expected_quantity || 0),
+            expected: stockValue(stock.expected_quantity),
             actual,
             variance: diff,
-            status: diff < 0 ? 'عجز' : diff > 0 ? 'زيادة' : 'مطابق',
+            status: stock.variance_quantity == null ? 'غير متاح' : diff < 0 ? 'عجز' : diff > 0 ? 'زيادة' : 'مطابق',
             cost,
             val,
             notes,
@@ -1438,11 +1441,11 @@ function makeSummaryExportRows(snapshot) {
       category: group.material_category,
       unit: group.material_unit,
       quantity: Number(group.quantity),
-      openingQuantity: Number(varianceByMaterial.get(group.material_id)?.opening_quantity || 0),
+      openingQuantity: stockValue(varianceByMaterial.get(group.material_id)?.opening_quantity),
       additionsQuantity: Number(varianceByMaterial.get(group.material_id)?.additions_quantity || 0),
       consumptionQuantity: Number(varianceByMaterial.get(group.material_id)?.consumption_quantity || 0),
-      expectedQuantity: Number(varianceByMaterial.get(group.material_id)?.expected_quantity || 0),
-      varianceQuantity: Number(varianceByMaterial.get(group.material_id)?.variance_quantity || 0),
+      expectedQuantity: stockValue(varianceByMaterial.get(group.material_id)?.expected_quantity),
+      varianceQuantity: stockValue(varianceByMaterial.get(group.material_id)?.variance_quantity),
       note: notes.join(' | '),
       expiryAllocations,
       expirationDate: '',
@@ -1599,10 +1602,10 @@ function buildInventoryVarianceExcelSheet(workbook, snapshot) {
   const materials = new Map(state.materials.map(material => [material.id, material]));
   (snapshot.stock_variance || []).forEach((stock, index) => {
     const material = materials.get(stock.material_id) || {};
-    const variance = Number(stock.variance_quantity || 0);
+    const variance = stockValue(stock.variance_quantity);
     const costPrice = Number(material.cost_price || 0);
     const row = sheet.getRow(index + 5);
-    row.values = [index + 1, material.code || '', material.name || '', material.unit || '', Number(stock.opening_quantity || 0), Number(stock.additions_quantity || 0), Number(stock.consumption_quantity || 0), Number(stock.expected_quantity || 0), Number(stock.actual_quantity || 0), variance, costPrice, Number(stock.actual_quantity || 0) * costPrice];
+    row.values = [index + 1, material.code || '', material.name || '', material.unit || '', stockValue(stock.opening_quantity), Number(stock.additions_quantity || 0), Number(stock.consumption_quantity || 0), stockValue(stock.expected_quantity), stockValue(stock.actual_quantity), variance, costPrice, (stock.actual_quantity == null ? 'غير متاح' : Number(stock.actual_quantity) * costPrice)];
     row.eachCell({ includeEmpty: true }, cell => {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
@@ -1648,12 +1651,12 @@ function buildInventoryHistoryVarianceExcelSheet(workbook, branchHistory) {
         code: material.code || '',
         name: material.name || '',
         unit: material.unit || '',
-        opening: Number(stock.opening_quantity || 0),
+        opening: stockValue(stock.opening_quantity),
         additions: Number(stock.additions_quantity || 0),
         consumption: Number(stock.consumption_quantity || 0),
-        expected: Number(stock.expected_quantity || 0),
-        actual: Number(stock.actual_quantity || 0),
-        variance: Number(stock.variance_quantity || 0),
+        expected: stockValue(stock.expected_quantity),
+        actual: stockValue(stock.actual_quantity),
+        variance: stockValue(stock.variance_quantity),
       };
     });
   }));
@@ -1666,7 +1669,7 @@ function buildInventoryHistoryVarianceExcelSheet(workbook, branchHistory) {
   });
   rows.forEach((item, index) => {
     const row = sheet.getRow(index + 2);
-    row.values = [item.branch, item.from, item.to, item.code, item.name, item.unit, item.opening, item.additions, item.consumption, item.expected, item.actual, item.variance, item.variance < 0 ? 'عجز' : item.variance > 0 ? 'زيادة' : 'مطابق'];
+    row.values = [item.branch, item.from, item.to, item.code, item.name, item.unit, item.opening, item.additions, item.consumption, item.expected, item.actual, item.variance, typeof item.variance !== 'number' ? 'غير متاح' : item.variance < 0 ? 'عجز' : item.variance > 0 ? 'زيادة' : 'مطابق'];
     row.eachCell({ includeEmpty: true }, cell => {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: item.variance < 0 ? 'FFFEE2E2' : item.variance > 0 ? 'FFFEF3C7' : 'FFF0FDF4' } };

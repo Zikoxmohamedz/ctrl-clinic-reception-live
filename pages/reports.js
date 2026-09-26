@@ -1,5 +1,9 @@
 import { supabase, today, money, escapeHtml, toast } from '../supabase.js?v=20260801-audit-context';
 import { list, hydrate } from '../data.js?v=20260801-reception-features';
+import { renderAccountingReports } from './accounting-reports.js?v=20260926-dashboard';
+
+const stockValue = value => value == null ? 'غير متاح' : Number(value);
+const stockDisplay = value => value == null ? 'غير متاح' : money(value);
 
 const PAGE_SIZE = 25;
 let reportState = {};
@@ -11,6 +15,11 @@ function saleTotal(row) {
 }
 
 export async function renderReports(root, profile) {
+  return renderAccountingReports(root, profile, renderHistoricalReports);
+}
+
+async function renderHistoricalReports(root, profile) {
+  reportState = { activeTab: 'inventory-history' };
   reportRoot = root;
   const allBranches = await list('branches');
   const allowedIds = profile.branch_ids?.length ? profile.branch_ids : profile.role === 'admin' ? allBranches.map(branch => branch.id) : [profile.branch_id];
@@ -27,7 +36,7 @@ export async function renderReports(root, profile) {
       </div>
       <div class="reports-header-actions">
         <button class="btn gold" id="btn-pull-all-branches-inventory" type="button">📥 سحب كل الفروع بالتواريخ والأرصدة</button>
-        <button class="btn primary" id="btn-export-all-reports" type="button">📊 تنزيل Excel شامل ↓</button>
+        <button class="btn primary" id="btn-export-all-reports" type="button">العودة لتقارير المحاسب</button>
       </div>
     </div>
 
@@ -77,7 +86,7 @@ export async function renderReports(root, profile) {
   };
 
   root.querySelector('#btn-export-all-reports').onclick = () => {
-    exportExcel('all');
+    renderReports(root, profile);
   };
 
   await loadReport(profile, branches, materials, new FormData(root.querySelector('form')));
@@ -248,8 +257,6 @@ function renderOutput(focusTarget) {
   const active = reportState.activeTab || 'overview';
 
   output.innerHTML = `
-    ${renderKpiCards()}
-    ${renderTabNavigation(active)}
     <div id="reports-tab-content">${renderTabContent(active)}</div>
   `;
 
@@ -761,9 +768,9 @@ function renderBranchHistoryCard({ branch, snapshots }) {
                       const matEntries = entries.filter(e => e.material_id === mId);
                       const costPrice = Number(mat.cost_price || 0);
                       const actualQty = Number(stock.actual_quantity ?? matEntries.reduce((s, e) => s + Number(e.quantity || 0), 0));
-                      const diff = Number(stock.variance_quantity || 0);
+                      const diff = stockValue(stock.variance_quantity);
                       const val = actualQty * costPrice;
-                      const statusBadge = diff < 0
+                      const statusBadge = stock.variance_quantity == null ? '<span class="badge">غير متاح</span>' : diff < 0
                         ? `<span class="badge danger">عجز ${money(Math.abs(diff))}</span>`
                         : diff > 0
                         ? `<span class="badge temp">زيادة ${money(diff)}</span>`
@@ -780,10 +787,10 @@ function renderBranchHistoryCard({ branch, snapshots }) {
                           <td>${escapeHtml(mat.code || '—')}</td>
                           <td class="row-title"><b>${escapeHtml(mat.name || 'صنف غير معروف')}</b></td>
                           <td>${escapeHtml(mat.unit || '—')}</td>
-                          <td>${money(stock.opening_quantity)}</td>
+                          <td>${stockDisplay(stock.opening_quantity)}</td>
                           <td>${money(stock.additions_quantity)}</td>
                           <td>${money(stock.consumption_quantity)}</td>
-                          <td><b>${money(stock.expected_quantity)}</b></td>
+                          <td><b>${stockDisplay(stock.expected_quantity)}</b></td>
                           <td style="font-weight: 900; color: #142a55;">${money(actualQty)}</td>
                           <td>${statusBadge}</td>
                           <td>${money(costPrice)} ج.م</td>
@@ -826,20 +833,18 @@ async function loadAllBranchesInventoryHistory(force = false) {
   try {
     const branches = scopedBranches();
     const branchHistory = await Promise.all(branches.map(async branch => {
-      const { data, error } = await supabase.rpc('list_inventory_sessions', { target_branch: branch.id, max_rows: 100 });
-      if (error) {
-        console.warn(`Could not load sessions for ${branch.name}:`, error);
-        return { branch, snapshots: [] };
-      }
-      const completed = (data || []).filter(session => session.status === 'completed');
+      const { data, error } = await supabase.rpc('accounting_report_source', { target_branch: branch.id, through_date: reportState.to });
+      if (error) throw error;
+      const completed = (data.sessions || []).filter(session => session.status === 'completed' && session.inventory_date >= reportState.from);
       const snapshots = await Promise.all(completed.map(session => getInventorySessionSnapshot(session.id)));
-      snapshots.sort((a, b) => new Date(a.session.completed_at || a.session.created_at) - new Date(b.session.completed_at || b.session.created_at));
+      snapshots.sort((a, b) => String(a.session.inventory_date || a.session.created_at).localeCompare(String(b.session.inventory_date || b.session.created_at)));
       return { branch, snapshots };
     }));
 
     reportState.inventoryHistory = branchHistory.filter(b => b.snapshots.length > 0);
   } catch (err) {
     console.error('Failed to load all branch inventory history:', err);
+    reportState.inventoryHistory = [];
     toast('تعذر سحب كامل الجرود لجميع الفروع', 'error');
   } finally {
     reportState.inventoryHistoryLoading = false;
@@ -855,6 +860,8 @@ async function getInventorySessionSnapshot(sessionId) {
   ]);
 
   if (snapshotResult.error) throw snapshotResult.error;
+  if (varianceResult.error) throw varianceResult.error;
+  if (sessionResult.error) throw sessionResult.error;
   const data = snapshotResult.data || {};
   data.stock_variance = varianceResult?.data || [];
   if (sessionResult?.data?.inventory_date) data.session.inventory_date = sessionResult.data.inventory_date;
@@ -1188,7 +1195,7 @@ async function exportAllBranchesHistoryExcel() {
           const matEntries = entries.filter(e => e.material_id === mId);
           const cost = Number(mat.cost_price || 0);
           const actual = Number(stock.actual_quantity ?? matEntries.reduce((s, e) => s + Number(e.quantity || 0), 0));
-          const diff = Number(stock.variance_quantity || 0);
+          const diff = stockValue(stock.variance_quantity);
           const val = actual * cost;
 
           const notes = matEntries.flatMap(e => {
@@ -1203,13 +1210,13 @@ async function exportAllBranchesHistoryExcel() {
             'اسم الصنف': mat.name || 'صنف غير معروف',
             'الفئة': mat.category || '',
             'الوحدة': mat.unit || '',
-            'رصيد أول المدة': Number(stock.opening_quantity || 0),
+            'رصيد أول المدة': stockValue(stock.opening_quantity),
             'الإضافات': Number(stock.additions_quantity || 0),
             'الصرف': Number(stock.consumption_quantity || 0),
-            'الرصيد المتوقع': Number(stock.expected_quantity || 0),
+            'الرصيد المتوقع': stockValue(stock.expected_quantity),
             'الجرد الفعلي': actual,
             'العجز / الزيادة': diff,
-            'الحالة': diff < 0 ? 'عجز' : diff > 0 ? 'زيادة' : 'مطابق',
+            'الحالة': stock.variance_quantity == null ? 'غير متاح' : diff < 0 ? 'عجز' : diff > 0 ? 'زيادة' : 'مطابق',
             'تكلفة الوحدة': cost,
             'إجمالي قيمة المخزون': val,
             'الملاحظات وتوزيع الصلاحيات': notes,

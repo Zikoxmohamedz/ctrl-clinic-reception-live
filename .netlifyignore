@@ -1,0 +1,15 @@
+.env
+.env.*
+node_modules/
+netlify-upload/
+.netlify/
+.local/
+.github/
+*.md
+scripts/
+supabase/
+*.sql
+*.zip
+*.xlsx
+*.cmd
+*.ps1

@@ -28,9 +28,15 @@ export async function list(type, filters = {}) {
     else if (key === 'date_to') query = query.lte('date', value);
     else query = query.eq(key, value);
   });
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) throw error;
-  return data || [];
+  const rows = [];
+  query = query.order('created_at', { ascending: false }).order('id');
+  // Supabase caps individual REST responses; fetch every page with stable ordering.
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await query.range(offset, offset + 499);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < 500) return rows;
+  }
 }
 
 export async function searchMaterials(query) {
