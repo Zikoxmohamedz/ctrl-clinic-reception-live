@@ -1,6 +1,6 @@
 import { supabase, today, money, escapeHtml, toast } from '../supabase.js?v=20260801-audit-context';
 import { list, hydrate } from '../data.js?v=20260801-reception-features';
-import { renderAccountingReports } from './accounting-reports.js?v=20260926-dashboard';
+import { renderAccountingReports } from './accounting-reports.js?v=20260927-accounting';
 
 const stockValue = value => value == null ? 'غير متاح' : Number(value);
 const stockDisplay = value => value == null ? 'غير متاح' : money(value);

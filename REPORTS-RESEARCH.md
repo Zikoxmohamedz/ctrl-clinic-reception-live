@@ -7,9 +7,9 @@ Reviewed official product references on 2026-09-26:
 - [Odoo stock report](https://www.odoo.com/documentation/19.0/applications/inventory_and_mrp/inventory/warehouses_storage/reporting/stock.html): product stock and forecast drill-down.
 - [Odoo inventory aging](https://www.odoo.com/documentation/17.0/applications/inventory_and_mrp/inventory/warehouses_storage/reporting/aging.html): aging as an inventory investigation.
 
-The clinic app now has 20 reports and an interactive dashboard. Existing accounting reports remain available. Added: branch comparisons, daily transactions/revenue, days of stock coverage and configurable replenishment scenarios, items without recorded client consumption, revenue-based ABC, expiry alerts, count coverage and data-quality exceptions.
+The clinic app now has 22 reports and an interactive dashboard. Existing accounting reports remain available. Added: branch comparisons, daily transactions/revenue, days of stock coverage and configurable replenishment scenarios, items without recorded client consumption, revenue-based ABC, expiry alerts, count coverage and data-quality exceptions.
 
-The dashboard uses the same applied filters and reviewed report rows as Excel and print. It appears on Home only for accounts with reports, inventory and inventory-report permissions. Other users retain the reception home. There is no public data snapshot bundled with the website: the existing authenticated Supabase RPC loads authorized branches.
+The dashboard uses the same applied filters and reviewed report rows as Excel and print. It is available inside the report centre; all users retain the independent reception home. There is no public data snapshot bundled with the website: the existing authenticated Supabase RPC loads authorized branches.
 
 ## Supported definitions
 
@@ -28,4 +28,6 @@ Supplier aging, receivables/payables, purchase commitments, exact FIFO/weighted-
 
 ## Validation
 
-`scripts/test-accounting.mjs` checks inventory-cycle semantics. `scripts/test-inventory-insights.mjs` verifies coverage, transfer exclusion, ABC, dormancy, branch/daily reconciliation, expiry and material filters. `scripts/check-accounting-ui.mjs` verifies 21 views/export sheets, filters, real Excel write/read, print, dashboard drill-down, mobile rendering and failure handling. SQL/JavaScript accounting checks compare authoritative RPC results with client calculations.
+`scripts/test-accounting.mjs` checks inventory-cycle semantics. `scripts/test-inventory-insights.mjs` verifies coverage, transfer exclusion, ABC, dormancy, branch/daily reconciliation, expiry and material filters. `scripts/check-accounting-ui.mjs` verifies 23 views/export sheets, filters, real Excel write/read, print, dashboard drill-down, mobile rendering and failure handling. SQL/JavaScript accounting checks compare authoritative RPC results with client calculations.
+
+The September 27 release keeps the reception home independent of reports. It adds dated branch-by-branch count reconciliation and an opening-baseline register. The accounting cycle starts at July 31, 2026 or the nearest available completed count, at its actual date. Automatic migration seeds no longer establish this cycle.

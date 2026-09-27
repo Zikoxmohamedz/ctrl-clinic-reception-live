@@ -881,7 +881,7 @@ function prefetchInventoryReports(force = false) {
       const { data: dates, error: datesError } = await supabase.from('inventory_sessions').select('id,inventory_date').eq('branch_id', state.profile.branch_id);
       if (datesError) throw datesError;
       const inventoryDates = new Map((dates || []).map(session => [session.id, session.inventory_date]));
-      state.reportSessions = sessions.map(session => ({ ...session, inventory_date: inventoryDates.get(session.id) }));
+      state.reportSessions = sessions.map(session => ({ ...session, inventory_date: inventoryDates.get(session.id) })).sort((a,b) => String(b.inventory_date).localeCompare(String(a.inventory_date)));
       return state.reportSessions;
     })
     .finally(() => { state.reportLoadPromise = null; });
@@ -1125,7 +1125,7 @@ async function exportAllBranchesExcel(event) {
     const branchHistory = await Promise.all(branches.map(async branch => {
       const { data, error } = await supabase.rpc('list_inventory_sessions', { target_branch: branch.id, max_rows: 100 });
       if (error) throw error;
-      const completed = (data || []).filter(session => session.status === 'completed');
+      const completed = (data || []).filter(session => session.status === 'completed' && Number(session.material_count) > 0);
       const snapshots = await Promise.all(completed.map(session => getSnapshot(session.id)));
       snapshots.sort((a, b) => String(a.session.inventory_date || a.session.created_at).localeCompare(String(b.session.inventory_date || b.session.created_at)));
       return { branch, snapshots };
@@ -1213,7 +1213,7 @@ async function exportAllBranchesHistoryChronologicalExcel(event) {
     const branchHistory = await Promise.all(branches.map(async branch => {
       const { data, error } = await supabase.rpc('list_inventory_sessions', { target_branch: branch.id, max_rows: 100 });
       if (error) throw error;
-      const completed = (data || []).filter(session => session.status === 'completed');
+      const completed = (data || []).filter(session => session.status === 'completed' && Number(session.material_count) > 0);
       const snapshots = await Promise.all(completed.map(session => getSnapshot(session.id)));
       snapshots.sort((a, b) => String(a.session.inventory_date || a.session.created_at).localeCompare(String(b.session.inventory_date || b.session.created_at)));
       return { branch, snapshots };

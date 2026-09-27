@@ -4,18 +4,21 @@ export function cairoDate(value) {
 }
 const clean = n => Math.round(n * 1e8) / 1e8;
 export function calculateAccounts(source, materials, from, to) {
+  const strict = Object.hasOwn(source, 'baseline');
+  const anchor = source.baseline?.date;
   const sessions = new Map(source.sessions.map(s => [s.id, s]));
   const counts = new Map();
   for (const entry of source.entries) {
     const session = sessions.get(entry.session_id);
     if (session?.status !== 'completed') continue;
+    if (strict && (!anchor || session.inventory_date < anchor)) continue;
     const key = `${entry.session_id}|${entry.material_id}`;
     if (!counts.has(key)) counts.set(key, { material_id: entry.material_id, date: session.inventory_date, quantity: 0, type: 'count', id: session.id, order: session.completed_at || session.created_at });
     counts.get(key).quantity += Number(entry.quantity);
   }
   const events = new Map(materials.map(m => [m.id, []]));
   const add = event => { if (!events.has(event.material_id)) events.set(event.material_id, []); events.get(event.material_id).push(event); };
-  source.openings.forEach(o => add({ ...o, date: cairoDate(o.opened_at), type: 'opening', order: o.opened_at }));
+  if (!strict) source.openings.forEach(o => add({ ...o, date: cairoDate(o.opened_at), type: 'opening', order: o.opened_at }));
   source.additions.forEach(a => add({ ...a, type: 'addition', order: a.created_at }));
   source.consumption.forEach(c => add({ ...c, type: c.record_type === 'transfer' ? 'transfer' : 'consumption', order: c.created_at }));
   counts.forEach(add);
@@ -26,11 +29,13 @@ export function calculateAccounts(source, materials, from, to) {
     history.sort((a,b) => a.date.localeCompare(b.date) || rank[a.type]-rank[b.type] || String(a.order).localeCompare(String(b.order)) || String(a.id).localeCompare(String(b.id)));
     const material = materialMap.get(materialId) || { id: materialId, name: materialId };
     let balance = null, opening = null, added = 0, consumed = 0, transferred = 0, adjustment = 0, shortage = 0, surplus = 0, actual = null, actualDate = '', baselineDate = '', unknownVariance = false, initialised = false;
+    let foundingDate = '', foundingQuantity = null, excludedMovements = 0;
     for (const event of history) {
       if (event.date > to) break;
       const inPeriod = event.date >= from;
       if (inPeriod && !initialised) { opening = balance; initialised = true; }
       const before = balance;
+      const establishes = strict && event.type === 'count' && before === null;
       const quantity = Number(event.quantity);
       let delta = 0, variance = null;
       if (event.type === 'opening') {
@@ -39,10 +44,12 @@ export function calculateAccounts(source, materials, from, to) {
         balance = quantity; baselineDate = event.date;
         delta = before === null ? null : clean(balance-before);
       } else if (event.type === 'count') {
+        if (!foundingDate) { foundingDate = event.date; foundingQuantity = quantity; }
+        if (establishes && inPeriod) opening = quantity;
         variance = before === null ? null : clean(quantity-before);
         delta = variance;
         balance = quantity; actual = quantity; actualDate = event.date; baselineDate = event.date;
-        if (inPeriod) {
+        if (inPeriod && !establishes) {
           if (variance === null) unknownVariance = true;
           else { adjustment = clean(adjustment+variance); shortage = clean(shortage+Math.max(0,-variance)); surplus = clean(surplus+Math.max(0,variance)); }
           variances.push({ material, date: event.date, expected: before, actual: quantity, variance, session_id: event.id });
@@ -50,16 +57,17 @@ export function calculateAccounts(source, materials, from, to) {
       } else {
         delta = event.type === 'addition' ? quantity : -quantity;
         if (balance !== null) balance = clean(balance+delta);
-        if (inPeriod) {
+        if (inPeriod && (!strict || before !== null)) {
           if (event.type === 'addition') added += quantity;
           else if (event.type === 'transfer') transferred += quantity;
           else consumed += quantity;
         }
+        if (inPeriod && strict && before === null) excludedMovements++;
       }
-      if (inPeriod) ledger.push({ ...event, material, before, delta, balance, variance });
+      if (inPeriod) ledger.push({ ...event, type: establishes ? 'opening' : event.type, material, before, delta, balance, variance, excluded: strict && before === null && !establishes });
     }
     if (!initialised) opening = balance;
-    rows.push({ material, opening, added: clean(added), consumed: clean(consumed), transferred: clean(transferred), adjustment: unknownVariance ? null : adjustment, shortage: unknownVariance ? null : shortage, surplus: unknownVariance ? null : surplus, balance, actual, actualDate, baselineDate,
+    rows.push({ material, opening, added: clean(added), consumed: clean(consumed), transferred: clean(transferred), adjustment: unknownVariance ? null : adjustment, shortage: unknownVariance ? null : shortage, surplus: unknownVariance ? null : surplus, balance, actual, actualDate, baselineDate, foundingDate, foundingQuantity, excludedMovements,
       expected: opening === null ? null : clean(opening+added-consumed-transferred),
       status: balance === null ? 'لا يوجد رصيد تأسيسي موثّق' : actualDate === to ? 'جرد فعلي بنهاية الفترة' : actualDate ? 'رصيد دفتري بعد آخر جرد' : 'رصيد دفتري من الافتتاحي' });
   }

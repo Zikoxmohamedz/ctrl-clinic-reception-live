@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {calculateAccounts} from '../pages/accounting-engine.mjs';
+const materials=[{id:'m',name:'test'}];
+const source={baseline:{date:'2026-08-02',session_id:'a'},openings:[{material_id:'m',quantity:-900,opened_at:'2026-08-27T12:00:00Z'}],sessions:[{id:'a',inventory_date:'2026-08-02',status:'completed'},{id:'b',inventory_date:'2026-08-31',status:'completed'}],entries:[{session_id:'a',material_id:'m',quantity:10},{session_id:'b',material_id:'m',quantity:6}],additions:[],consumption:[{material_id:'m',date:'2026-08-01',quantity:99},{material_id:'m',date:'2026-08-03',quantity:3}]};
+const a=calculateAccounts(source,materials,'2026-07-31','2026-08-31');
+assert.equal(a.rows[0].opening,10);assert.equal(a.rows[0].consumed,3);assert.equal(a.rows[0].balance,6);assert.equal(a.rows[0].adjustment,-1);assert.equal(a.variances.length,1);assert.equal(a.ledger.filter(r=>r.excluded).length,1);
+const future=calculateAccounts(source,materials,'2026-07-31','2026-08-01');assert.equal(future.rows[0].balance,null);assert.equal(future.rows[0].opening,null);
+const noCount=calculateAccounts({...source,baseline:{date:null,session_id:null}},materials,'2026-07-31','2026-09-01');assert.equal(noCount.rows[0].balance,null);
+const next=calculateAccounts(source,materials,'2026-09-01','2026-09-27');assert.equal(next.rows[0].opening,6);
+console.log('Strict cycle tests passed: late baseline, ignored automated seed, pre-baseline movements, future count, no count, roll-forward.');

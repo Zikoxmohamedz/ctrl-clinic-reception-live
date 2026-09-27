@@ -2,13 +2,13 @@ import './theme.js';
 import { supabase } from './supabase.js?v=20260801-audit-context';
 import { renderConsumption } from './pages/consumption.js?v=20260901-cost-vials-v1';
 import { renderAdditions } from './pages/additions.js?v=20260801-auto-add-v2';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260926-accounting';
-import { renderReports } from './pages/reports.js?v=20260926-dashboard';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260927-accounting';
+import { renderReports } from './pages/reports.js?v=20260927-accounting';
 import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.26.3';
+const APP_VERSION = '2026.09.27.1';
 const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
 
@@ -137,7 +137,6 @@ async function initializeBranchSwitcher() {
 }
 
 async function home() {
-  if (permissions.reports && permissions.inventory && permissions.inventory_reports) return renderReports(content, profile);
   const date = new Date().toLocaleDateString('en-CA');
   const [consumption, additions] = await Promise.all([list('consumption', { date }), list('additions', { date })]);
   const branchConsumption = consumption.filter(row => row.branch_id === profile.branch_id);

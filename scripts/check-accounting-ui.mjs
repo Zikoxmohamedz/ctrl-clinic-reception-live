@@ -25,23 +25,27 @@ try{
  await page.click('#account-august');await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('1 فرع'));
  assert.match(await page.locator('#account-output').innerText(),/2026-08-31/);
  await page.screenshot({path:'.local/accounting-reports-desktop.png',fullPage:true});
- for(const tab of await page.locator('[data-tab]').all()){await tab.click();assert.ok(await page.locator('#account-title').innerText());}
- await page.click('[data-download=all]');await page.waitForFunction(()=>window.downloadSheets.length===21);assert.equal((await page.evaluate(()=>window.downloadSheets)).length,21);
+ for(const key of await page.locator('#account-mobile-picker option').evaluateAll(options=>options.map(o=>o.value))){await page.selectOption('#account-mobile-picker',key);assert.ok(await page.locator('#account-title').innerText());}
+ await page.click('[data-download=all]');await page.waitForFunction(()=>window.downloadSheets.length===23);assert.equal((await page.evaluate(()=>window.downloadSheets)).length,23);
  const excelSource=await (await fetch('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js')).text();
  await writeFile('.local/exceljs.cjs',excelSource);
  await page.addScriptTag({content:excelSource});
  const downloadPromise=page.waitForEvent('download');await page.click('[data-download=all]');const download=await downloadPromise;await download.saveAs('.local/haram-august-reports.xlsx');
- const ExcelJS=createRequire(import.meta.url)('../.local/exceljs.cjs');const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await readFile('.local/haram-august-reports.xlsx'));assert.equal(workbook.worksheets.length,21);assert.equal(workbook.worksheets[1].rowCount,103);
+ const ExcelJS=createRequire(import.meta.url)('../.local/exceljs.cjs');const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await readFile('.local/haram-august-reports.xlsx'));assert.equal(workbook.worksheets.length,23);assert.equal(workbook.getWorksheet('أرصدة الفترة').rowCount,103);
  const popupPromise=page.waitForEvent('popup');await page.click('#account-print');const popup=await popupPromise;await popup.waitForLoadState();assert.ok(await popup.locator('table').count());await popup.close();
- const material=dataset.groups.find(g=>g.branch.name==='Haram').source.entries[0].material_id;
- await page.selectOption('[name=material]',material);await page.click('button[type=submit]');await page.waitForTimeout(200);await page.click('[data-tab=ledger]');
+ const haram=dataset.groups.find(g=>g.branch.name==='Haram').source;
+ const augustSession=haram.sessions.find(s=>s.inventory_date==='2026-08-31');
+ const material=haram.entries.find(e=>e.session_id===augustSession.id).material_id;
+ await page.selectOption('[name=material]',material);await page.click('button[type=submit]');await page.waitForTimeout(200);await page.selectOption('#account-mobile-picker','ledger');
  assert.ok((await page.locator('#account-output tbody tr').count())>0);
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.local/accounting-reports-mobile.png',fullPage:true});
  await page.selectOption('#account-mobile-picker','dashboard');await page.locator('[data-dashboard-tab=replenishment]').first().click();assert.match(await page.locator('#account-title').innerText(),/التوريد/);await page.selectOption('#account-mobile-picker','dashboard');await page.screenshot({path:'.local/accounting-dashboard-mobile.png',fullPage:true});
  const dashboardPrintPromise=page.waitForEvent('popup');await page.click('#account-print');const dashboardPrint=await dashboardPrintPromise;await dashboardPrint.waitForLoadState();await dashboardPrint.emulateMedia({media:'print'});assert.equal(await dashboardPrint.locator('.account-kpi:visible').count(),4);await dashboardPrint.close();
  await page.selectOption('[name=material]','');await page.selectOption('[name=branch]','');await page.click('button[type=submit]');await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('15 فرع'));
  const allDownloadPromise=page.waitForEvent('download');await page.click('[data-download=all]');await (await allDownloadPromise).saveAs('.local/all-branches-august-reports.xlsx');
+ const branchDownloadPromise=page.waitForEvent('download');await page.click('[data-download=branches]');await (await branchDownloadPromise).saveAs('.local/chronological-by-branch.xlsx');
+ const branchWorkbook=new ExcelJS.Workbook();await branchWorkbook.xlsx.load(await readFile('.local/chronological-by-branch.xlsx'));assert.equal(branchWorkbook.worksheets.length,15);
  await page.evaluate(()=>window.failReport=true);await page.click('button[type=submit]');await page.waitForFunction(()=>document.querySelector('#account-status').textContent==='test failure');
  assert.match(await page.locator('#account-output').innerText(),/تعذر/);assert.deepEqual(errors,[]);
- console.log('Browser checks passed: 21 views/sheets, date/branch/material filters, real Excel round-trip, print, dashboard drill-down, mobile render, and failure without stale balances.');
+ console.log('Browser checks passed: 23 views/sheets, per-branch chronological workbook, filters, real Excel round-trip, print, guide, mobile render and failure handling.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
