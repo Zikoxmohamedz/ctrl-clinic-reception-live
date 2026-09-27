@@ -26,12 +26,12 @@ try{
  assert.match(await page.locator('#account-output').innerText(),/2026-08-31/);
  await page.screenshot({path:'.local/accounting-reports-desktop.png',fullPage:true});
  for(const key of await page.locator('#account-mobile-picker option').evaluateAll(options=>options.map(o=>o.value))){await page.selectOption('#account-mobile-picker',key);assert.ok(await page.locator('#account-title').innerText());}
- await page.click('[data-download=all]');await page.waitForFunction(()=>window.downloadSheets.length===23);assert.equal((await page.evaluate(()=>window.downloadSheets)).length,23);
+ await page.click('[data-download=all]');await page.waitForFunction(()=>window.downloadSheets.length===27);assert.equal((await page.evaluate(()=>window.downloadSheets)).length,27);
  const excelSource=await (await fetch('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js')).text();
  await writeFile('.local/exceljs.cjs',excelSource);
  await page.addScriptTag({content:excelSource});
  const downloadPromise=page.waitForEvent('download');await page.click('[data-download=all]');const download=await downloadPromise;await download.saveAs('.local/haram-august-reports.xlsx');
- const ExcelJS=createRequire(import.meta.url)('../.local/exceljs.cjs');const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await readFile('.local/haram-august-reports.xlsx'));assert.equal(workbook.worksheets.length,23);assert.equal(workbook.getWorksheet('أرصدة الفترة').rowCount,103);
+ const ExcelJS=createRequire(import.meta.url)('../.local/exceljs.cjs');const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await readFile('.local/haram-august-reports.xlsx'));assert.equal(workbook.worksheets.length,27);assert.equal(workbook.getWorksheet('أرصدة الفترة').rowCount,103);
  const popupPromise=page.waitForEvent('popup');await page.click('#account-print');const popup=await popupPromise;await popup.waitForLoadState();assert.ok(await popup.locator('table').count());await popup.close();
  const haram=dataset.groups.find(g=>g.branch.name==='Haram').source;
  const augustSession=haram.sessions.find(s=>s.inventory_date==='2026-08-31');
@@ -47,5 +47,5 @@ try{
  const branchWorkbook=new ExcelJS.Workbook();await branchWorkbook.xlsx.load(await readFile('.local/chronological-by-branch.xlsx'));assert.equal(branchWorkbook.worksheets.length,15);
  await page.evaluate(()=>window.failReport=true);await page.click('button[type=submit]');await page.waitForFunction(()=>document.querySelector('#account-status').textContent==='test failure');
  assert.match(await page.locator('#account-output').innerText(),/تعذر/);assert.deepEqual(errors,[]);
- console.log('Browser checks passed: 23 views/sheets, per-branch chronological workbook, filters, real Excel round-trip, print, guide, mobile render and failure handling.');
+ console.log('Browser checks passed: 27 views/sheets, per-branch chronological workbook, filters, real Excel round-trip, print, guide, mobile render and failure handling.');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}

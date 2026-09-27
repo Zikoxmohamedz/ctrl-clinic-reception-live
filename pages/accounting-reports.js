@@ -1,11 +1,12 @@
 import { supabase, today, escapeHtml, toast } from '../supabase.js?v=20260801-audit-context';
-import { list } from '../data.js?v=20260927-accounting';
-import { calculateAccounts } from './accounting-engine.mjs?v=20260927-accounting';
-import { buildInsights, insightLabels, insightNotes } from './inventory-insights.mjs?v=20260927-accounting';
-import { dashboardHtml } from './accounting-dashboard.mjs?v=20260927-accounting';
-import { reportGuide } from './report-guide.mjs?v=20260927';
+import { list } from '../data.js?v=20260927-procurement';
+import { calculateAccounts } from './accounting-engine.mjs?v=20260927-procurement';
+import { buildInsights, insightLabels, insightNotes } from './inventory-insights.mjs?v=20260927-procurement';
+import { dashboardHtml } from './accounting-dashboard.mjs?v=20260927-procurement';
+import { reportGuide } from './report-guide.mjs?v=20260927-procurement';
+import { procurementLabels, procurementReports } from './procurement-reports.mjs?v=20260927-procurement';
 
-const labels = { chronological:'المجمع بالتواريخ لكل فرع', baselines:'افتتاح المدة لكل فرع', balances: 'أرصدة الفترة', consolidated: 'مجمع الأرصدة حسب الصنف', ledger: 'كشف حركة صنف', variances: 'العجز والزيادة', additions: 'الوارد', consumption: 'الصرف', transfers: 'التحويلات', summary: 'ملخص حركة الأصناف والفروع', history: 'سجل الجرد', review: 'تفسير الأرصدة السالبة والناقصة', valuation: 'قيمة المخزون', expiry: 'صلاحيات آخر جرد', ...insightLabels, dashboard:'تحليل مؤشرات المخزون' };
+const labels = { chronological:'المجمع بالتواريخ لكل فرع', baselines:'افتتاح المدة لكل فرع', balances: 'أرصدة الفترة', consolidated: 'مجمع الأرصدة حسب الصنف', ledger: 'كشف حركة صنف', variances: 'العجز والزيادة', additions: 'الوارد', consumption: 'الصرف', transfers: 'التحويلات', summary: 'ملخص حركة الأصناف والفروع', history: 'سجل الجرد', review: 'تفسير الأرصدة السالبة والناقصة', valuation: 'قيمة المخزون', expiry: 'صلاحيات آخر جرد', ...insightLabels, ...procurementLabels, dashboard:'تحليل مؤشرات المخزون' };
 const types = { opening: 'رصيد تأسيسي', addition: 'إضافة', consumption: 'صرف', transfer: 'تحويل صادر', count: 'جرد فعلي' };
 const fmt = value => value == null ? 'غير متاح' : typeof value === 'number' ? new Intl.NumberFormat('ar-EG-u-nu-latn', { maximumFractionDigits: 4 }).format(value) : String(value);
 const round = value => Math.round(value * 1e8) / 1e8;
@@ -168,7 +169,7 @@ export async function renderAccountingReports(root, profile, showHistory) {
       }));
       if(ticket!==version||!root.contains(output))return;
       groups=loaded;applied=params;tables=reportTables(groups,params.material);page=1;
-      Object.assign(tables,buildInsights(groups,params,tables.expiry));
+      Object.assign(tables,buildInsights(groups,params,tables.expiry),procurementReports(groups,params));
       tables.dashboard=tables.branches;
       const open=groups.flatMap(g=>g.source.sessions).filter(s=>s.status!=='completed').length;
       status.textContent=`تم تحميل ${groups.length} فرع. ${open?`${open} جرد مفتوح لا يدخل في الرصيد المعتمد. `:''}كل الصادرات تشمل جميع السطور المطابقة، وليس الصفحة الظاهرة فقط.`;

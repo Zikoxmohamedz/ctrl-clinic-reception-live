@@ -19,10 +19,11 @@ export function calculateAccounts(source, materials, from, to) {
   const events = new Map(materials.map(m => [m.id, []]));
   const add = event => { if (!events.has(event.material_id)) events.set(event.material_id, []); events.get(event.material_id).push(event); };
   if (!strict) source.openings.forEach(o => add({ ...o, date: cairoDate(o.opened_at), type: 'opening', order: o.opened_at }));
+  (source.receipt_foundations || []).forEach(f => add({ ...f, quantity: 0, type: 'receipt_opening', order: '' }));
   source.additions.forEach(a => add({ ...a, type: 'addition', order: a.created_at }));
   source.consumption.forEach(c => add({ ...c, type: c.record_type === 'transfer' ? 'transfer' : 'consumption', order: c.created_at }));
   counts.forEach(add);
-  const rank = { addition: 0, consumption: 0, transfer: 0, opening: 1, count: 2 };
+  const rank = { receipt_opening: -1, addition: 0, consumption: 0, transfer: 0, opening: 1, count: 2 };
   const materialMap = new Map(materials.map(m => [m.id, m]));
   const rows = [], ledger = [], variances = [];
   for (const [materialId, history] of events) {
@@ -35,10 +36,14 @@ export function calculateAccounts(source, materials, from, to) {
       const inPeriod = event.date >= from;
       if (inPeriod && !initialised) { opening = balance; initialised = true; }
       const before = balance;
-      const establishes = strict && event.type === 'count' && before === null;
+      const establishes = strict && ['count','receipt_opening'].includes(event.type) && before === null;
       const quantity = Number(event.quantity);
       let delta = 0, variance = null;
-      if (event.type === 'opening') {
+      if (event.type === 'receipt_opening') {
+        if (balance !== null) continue;
+        balance = 0; foundingDate = event.date; foundingQuantity = 0; baselineDate = event.date;
+        if (inPeriod) opening = 0;
+      } else if (event.type === 'opening') {
         // A migration seed must never overwrite an existing physical count.
         if (actualDate) continue;
         balance = quantity; baselineDate = event.date;

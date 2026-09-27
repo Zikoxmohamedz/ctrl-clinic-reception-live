@@ -1,115 +1,20 @@
-import { today, toast, escapeHtml } from '../supabase.js?v=20260801-audit-context';
-import { insert, searchMaterials } from '../data.js?v=20260801-multi-additions';
-import { openTemporaryMaterial } from './temp-material.js?v=20260730-temp-save-v2';
-
-export async function renderAdditions(root, profile) {
-  let selected = null;
-  let lines = [];
-  root.innerHTML = `<div class="page-intro"><div><h2>إضافات المخزون</h2><p>أنشئ إذن إضافة واحدًا يحتوي على صنف واحد أو عدة أصناف.</p></div><button class="btn gold" id="add-temp-material">＋ إضافة صنف مؤقت</button></div>
-  <form class="panel" id="addition-form"><div class="panel-head"><div><h3>إذن إضافة جديد</h3><p>اختر الصنف واكتب كميته، وعند البحث عن الصنف التالي سيُضاف السابق تلقائيًا.</p></div><span class="addition-document-count" id="addition-document-count">0 صنف</span></div><div class="panel-body">
-    <div class="form-grid addition-header-fields"><div class="field"><label>التاريخ <em>*</em><input type="date" name="date" value="${today()}" required></label></div><div class="field span-2"><label>ملاحظات الإذن<textarea name="notes" placeholder="رقم الفاتورة أو اسم المورد..."></textarea></label></div></div>
-    <div class="addition-line-builder auto-add"><div class="field search-wrap"><label>الصنف <em>*</em><input id="add-search" autocomplete="off" placeholder="ابحث بالاسم أو الكود"></label><div id="add-results" class="autocomplete" hidden></div><div id="add-selected"></div></div><div class="field"><label>الكمية <em>*</em><input type="number" id="add-line-quantity" min="0.01" step="any" placeholder="اكتب الكمية"></label><small class="addition-auto-hint">بعد كتابة الكمية ابدأ البحث عن الصنف التالي، وسيُضاف هذا الصنف تلقائيًا.</small></div>
-    <div id="addition-lines" class="addition-lines"></div>
-    <div class="form-actions"><button type="reset" class="btn ghost">مسح الإذن</button><button type="submit" class="btn primary">حفظ الإذن بالكامل ←</button></div>
-  </div></form>`;
-
-  const form = root.querySelector('#addition-form');
-  const search = root.querySelector('#add-search');
-  const results = root.querySelector('#add-results');
-  const selectedBox = root.querySelector('#add-selected');
-  const quantity = root.querySelector('#add-line-quantity');
-  const linesBox = root.querySelector('#addition-lines');
-  const countBox = root.querySelector('#addition-document-count');
-
-  function pick(material) {
-    selected = material;
-    selectedBox.innerHTML = `<div class="selected-material"><span><b>${escapeHtml(material.name)}</b> · ${escapeHtml(material.code)}</span><span>${escapeHtml(material.unit)}</span></div>`;
-    search.value = '';
-    results.hidden = true;
-    quantity.focus();
-  }
-
-  function clearBuilder() {
-    selected = null;
-    selectedBox.innerHTML = '';
-    search.value = '';
-    quantity.value = '';
-  }
-
-  function drawLines() {
-    countBox.textContent = `${lines.length} صنف`;
-    linesBox.innerHTML = lines.length ? `<div class="table-wrap"><table class="data-table addition-lines-table"><thead><tr><th>#</th><th>الصنف</th><th>الكود</th><th>الكمية</th><th></th></tr></thead><tbody>${lines.map((line, index) => `<tr><td>${index + 1}</td><td class="row-title">${escapeHtml(line.material.name)}</td><td>${escapeHtml(line.material.code)}</td><td><b>${line.quantity.toLocaleString('ar-EG-u-nu-latn')}</b> ${escapeHtml(line.material.unit)}</td><td><button type="button" class="delete-icon" data-remove-line="${index}" title="حذف الصنف">×</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="addition-empty">لم تضف أصنافًا إلى الإذن بعد.</div>';
-    linesBox.querySelectorAll('[data-remove-line]').forEach(button => button.onclick = () => {
-      lines.splice(Number(button.dataset.removeLine), 1);
-      drawLines();
-    });
-  }
-
-  function commitSelected({ focusSearch = false } = {}) {
-    if (!selected) return true;
-    const amount = Number(quantity.value);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast(`اكتب كمية أكبر من صفر للصنف «${selected.name}» أو احذف اختياره`, 'warning');
-      quantity.focus();
-      return false;
-    }
-    const existing = lines.find(line => line.material.id === selected.id);
-    if (existing) existing.quantity += amount;
-    else lines.push({ material: selected, quantity: amount });
-    clearBuilder();
-    drawLines();
-    if (focusSearch) search.focus();
-    return true;
-  }
-
-  const saveTemporary = async material => {
-    const [saved] = await insert('materials', { ...material, created_by: profile.id });
-    pick(saved);
-    toast('تمت إضافة الصنف المؤقت واختياره للإذن');
-  };
-
-  let timer;
-  search.oninput = () => {
-    clearTimeout(timer);
-    if (search.value.trim().length < 2) { results.hidden = true; return; }
-    timer = setTimeout(async () => {
-      const found = await searchMaterials(search.value.trim());
-      const query = search.value.trim();
-      results.innerHTML = found.map(material => `<button type="button" data-id="${material.id}"><b>${escapeHtml(material.name)} ${material.is_temp ? '<i class="badge temp">مؤقت</i>' : ''}</b><small>${escapeHtml(material.code)} · ${escapeHtml(material.unit)}</small></button>`).join('') || `<div class="empty-state compact-empty"><b>—</b>الصنف غير موجود<button type="button" class="btn gold" data-create-temp>＋ إضافة «${escapeHtml(query)}» كصنف مؤقت</button></div>`;
-      results.hidden = false;
-      results.querySelectorAll('button').forEach(button => button.onclick = () => button.hasAttribute('data-create-temp') ? openTemporaryMaterial(query, saveTemporary) : pick(found.find(material => material.id === button.dataset.id)));
-    }, 200);
-  };
-  search.onfocus = () => {
-    if (selected && !commitSelected()) setTimeout(() => quantity.focus(), 0);
-  };
-  quantity.onkeydown = event => { if (event.key === 'Enter') { event.preventDefault(); commitSelected({ focusSearch: true }); } };
-  root.querySelector('#add-temp-material').onclick = () => openTemporaryMaterial('', saveTemporary);
-  form.onreset = () => setTimeout(() => { lines = []; clearBuilder(); form.date.value = today(); drawLines(); }, 0);
-  form.onsubmit = async event => {
-    event.preventDefault();
-    if (!commitSelected()) return;
-    if (!lines.length) return toast('أضف صنفًا واحدًا على الأقل إلى الإذن', 'warning');
-    const submit = form.querySelector('[type="submit"]');
-    submit.disabled = true;
-    try {
-      const documentId = crypto.randomUUID();
-      const notes = form.notes.value.trim();
-      await insert('additions', lines.map(line => ({
-        document_id: documentId,
-        date: form.date.value,
-        branch_id: profile.branch_id,
-        material_id: line.material.id,
-        quantity: line.quantity,
-        added_by: profile.id,
-        notes,
-      })));
-      toast(`تم حفظ إذن الإضافة بنجاح (${lines.length} صنف)`);
-      const keptDate = form.date.value;
-      form.reset();
-      form.date.value = keptDate;
-    } catch (error) { toast(error.message, 'error'); }
-    finally { submit.disabled = false; }
-  };
-  drawLines();
+import { supabase,today,toast,escapeHtml as esc } from '../supabase.js?v=20260801-audit-context';
+import { list,insert } from '../data.js?v=20260927-procurement';
+export async function renderAdditions(root,profile){
+ const [materials,catalog,transfers]=await Promise.all([list('materials'),supabase.rpc('supplier_catalog'),supabase.rpc('pending_stock_transfers',{target_branch:profile.branch_id})]);
+ if(catalog.error)throw catalog.error;if(transfers.error)throw transfers.error;
+ const {suppliers,links}=catalog.data;let pending=transfers.data,lines=[];
+ root.innerHTML=`<div class="page-intro"><div><h2>إضافات المخزون</h2><p>سجل شراء من مورد بتكلفته الفعلية، أو استلم تحويلًا صادرًا من فرع. سعر البيع مستقل عن تكلفة الشراء.</p></div></div><form class="panel" id="receipt-form"><div class="panel-body"><div class="form-grid"><div class="field"><label>التاريخ<input type="date" name="date" value="${today()}" max="${today()}" required></label></div><div class="field"><label>مصدر الإضافة<select name="source_kind"><option value="supplier">مورد</option><option value="branch">تحويل من فرع</option></select></label></div><div class="field" id="supplier-field"><label>المورد<select name="supplier" required><option value="">اختر المورد</option>${suppliers.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></label></div><div class="field"><label>رقم الفاتورة / ملاحظات<input name="notes"></label></div></div>
+ <div id="supplier-builder"><p>تظهر خامات المورد المختار فقط. التكلفة لكل وحدة مخزون كما هي مكتوبة بجانب الصنف.</p><div class="form-grid"><div class="field"><label>بحث في خامات المورد<input id="receipt-search" placeholder="اسم أو كود"></label></div><div class="field"><label>الصنف<select id="receipt-material"><option value="">اختر المورد أولًا</option></select></label></div><div class="field"><label>الكمية<input id="receipt-qty" type="number" min="0.0001" step="any"></label></div><div class="field"><label>تكلفة شراء الوحدة<input id="receipt-cost" type="number" min="0" step="any"></label></div></div><button type="button" class="btn gold" id="receipt-add">＋ أضف الصنف للإذن</button></div>
+ <div id="transfer-builder" hidden><p>اختر التحويل الصادر المراد استلامه. الكمية والتكلفة تنتقلان من المصدر، ولا يُستلم التحويل مرتين.</p><div class="field"><label>التحويل<select id="receipt-transfer"></select></label></div><button type="button" class="btn gold" id="transfer-add">＋ إضافة التحويل للاستلام</button></div>
+ <div id="receipt-lines" style="margin-top:18px"></div><div class="form-actions"><button type="reset" class="btn ghost">مسح الإذن</button><button type="submit" class="btn primary">حفظ إذن الإضافة</button></div></div></form>`;
+ const form=root.querySelector('form'),select=root.querySelector('#receipt-material'),qty=root.querySelector('#receipt-qty'),cost=root.querySelector('#receipt-cost'),search=root.querySelector('#receipt-search');
+ function materialOptions(){const q=search.value.trim().toLowerCase();const ids=new Set(links.filter(l=>l.supplier_id===form.supplier.value).map(l=>l.material_id));select.innerHTML='<option value="">اختر الصنف</option>'+materials.filter(m=>!m.archived_at&&ids.has(m.id)&&`${m.name} ${m.code}`.toLowerCase().includes(q)).map(m=>`<option value="${m.id}">${esc(m.name)} — ${esc(m.code)} (${esc(m.unit)})</option>`).join('');cost.value='';}
+ function draw(){root.querySelector('#receipt-lines').innerHTML=lines.length?`<div class="table-wrap"><table class="data-table"><thead><tr><th>الصنف</th><th>الوحدة</th><th>الكمية</th><th>تكلفة الوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody>${lines.map((l,i)=>`<tr><td>${esc(l.name)}</td><td>${esc(l.unit)}</td><td>${l.quantity}</td><td>${l.unit_cost??'غير موثقة'}</td><td>${l.unit_cost==null?'غير متاح':(l.quantity*l.unit_cost).toFixed(2)}</td><td><button type="button" class="delete-icon" data-remove="${i}">×</button></td></tr>`).join('')}</tbody></table></div>`:'<p>لا توجد أصناف في الإذن.</p>';root.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{lines.splice(Number(b.dataset.remove),1);draw();});form.source_kind.disabled=lines.length>0;form.supplier.disabled=lines.length>0;}
+ form.source_kind.onchange=()=>{const supplier=form.source_kind.value==='supplier';root.querySelector('#supplier-builder').hidden=!supplier;root.querySelector('#supplier-field').hidden=!supplier;root.querySelector('#transfer-builder').hidden=supplier;form.supplier.required=supplier;root.querySelector('#receipt-transfer').innerHTML='<option value="">اختر التحويل</option>'+pending.map(t=>`<option value="${t.id}">${esc(t.source_name)} ← ${esc(t.material_name)} — ${t.quantity} ${esc(t.unit)} — ${esc(t.date)}</option>`).join('');};
+ form.supplier.onchange=materialOptions;search.oninput=materialOptions;select.onchange=()=>{cost.value=links.find(l=>l.supplier_id===form.supplier.value&&l.material_id===select.value)?.unit_cost??'';qty.focus();};
+ root.querySelector('#receipt-add').onclick=()=>{const m=materials.find(m=>m.id===select.value);if(!form.supplier.value||!m)return toast('اختر المورد والصنف','warning');if(!qty.value||Number(qty.value)<=0||cost.value===''||Number(cost.value)<0)return toast('أدخل كمية موجبة وتكلفة شراء الوحدة','warning');const unitCost=Number(cost.value),quantity=Number(qty.value);if(!Number.isFinite(unitCost)||!Number.isFinite(quantity))return;const existing=lines.find(l=>l.material_id===m.id&&l.unit_cost===unitCost);if(existing)existing.quantity+=quantity;else lines.push({material_id:m.id,name:m.name,unit:m.unit,quantity,unit_cost:unitCost,source_kind:'supplier',supplier_id:form.supplier.value});qty.value='';select.value='';cost.value='';search.value='';draw();};
+ root.querySelector('#transfer-add').onclick=()=>{const t=pending.find(t=>t.id===root.querySelector('#receipt-transfer').value);if(!t)return toast('اختر تحويلًا','warning');if(lines.some(l=>l.transfer_record_id===t.id))return toast('التحويل موجود بالإذن','warning');lines.push({name:t.material_name,unit:t.unit,material_id:t.material_id,quantity:Number(t.quantity),unit_cost:t.unit_cost==null?null:Number(t.unit_cost),source_kind:'branch',source_branch_id:t.branch_id,transfer_record_id:t.id});draw();};
+ form.onreset=()=>setTimeout(()=>{lines=[];form.supplier.disabled=false;form.source_kind.disabled=false;form.date.value=today();form.source_kind.onchange();materialOptions();draw();},0);
+ form.onsubmit=async e=>{e.preventDefault();if(!lines.length)return toast('أضف صنفًا إلى الإذن أولًا','warning');const button=form.querySelector('[type=submit]');button.disabled=true;try{const document_id=crypto.randomUUID();await insert('additions',lines.map(({name,unit,...l})=>({...l,branch_id:profile.branch_id,added_by:profile.id,date:form.date.value,document_id,notes:form.notes.value.trim()})));toast('تم حفظ الإذن ومصدره وتكلفة الشراء');await renderAdditions(root,profile);}catch(err){toast(err.message,'error');button.disabled=false;}};draw();
 }

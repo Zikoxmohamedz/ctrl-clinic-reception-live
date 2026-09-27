@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {procurementReports} from '../pages/procurement-reports.mjs';
+import {calculateAccounts} from '../pages/accounting-engine.mjs';
+const m={id:'m',name:'Material',code:'1',unit:'ml'},branch={name:'Branch'};
+const source={baseline:{date:null},openings:[],sessions:[],entries:[],receipt_foundations:[{material_id:'m',date:'2026-09-27'}],additions:[{material_id:'m',date:'2026-09-27',quantity:10,unit_cost:2,source_kind:'supplier',supplier_name:'Vendor'}],consumption:[{material_id:'m',date:'2026-09-27',quantity:2,unit_cost:2,total_selling_price:10,record_type:'client'},{material_id:'m',date:'2026-09-27',quantity:1,unit_cost:null,total_selling_price:8,record_type:'client'}],cost_positions:[{material_id:'m',unit_cost:2,valued_at:'2026-09-27T10:00:00Z'}]};
+const accounts=calculateAccounts(source,[m],'2026-09-27','2026-09-27');
+assert.equal(accounts.rows[0].balance,7);assert.equal(accounts.rows[0].opening,0);assert.equal(accounts.rows[0].added,10);
+const results=procurementReports([{branch,source,accounts}],{from:'2026-09-27',to:'2026-09-27'});
+assert.equal(results.purchases[0]['تكلفة الإضافة'],20);
+assert.equal(results.margins[0]['إجمالي البيع المسجل'],18);
+assert.equal(results.margins[0]['هامش الحركات الموثقة'],6);
+assert.equal(results.margins[0]['بيع غير محسوب الربح'],8);
+assert.equal(results.currentCost[0]['قيمة المخزون الحالية'],14);
+assert.equal(procurementReports([{branch,source,accounts}],{from:'2026-08-01',to:'2026-08-31'}).currentCost[0]['قيمة المخزون الحالية'],null);
+console.log('PASS receipt-based balance, separate purchasing/sales values, historical unknown-cost exclusion, weighted valuation date boundary');

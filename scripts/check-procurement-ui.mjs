@@ -1,0 +1,37 @@
+import {pathToFileURL} from 'node:url';
+import {readFile,writeFile} from 'node:fs/promises';
+import {createServer} from 'node:http';
+import {createRequire} from 'node:module';
+import assert from 'node:assert/strict';
+const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE_PATH).href);
+const server=createServer(async(req,res)=>{const path=new URL(req.url,'http://localhost').pathname;if(path==='/'){res.setHeader('Content-Type','text/html; charset=utf-8');res.end('<html lang="ar" dir="rtl"><link rel="stylesheet" href="/style.css"><main id="root" style="padding:24px"></main></html>');return;}if(!/^\/pages\/[\w.-]+\.(js|mjs)$/.test(path)&&path!='/style.css'){res.writeHead(404).end();return;}try{res.setHeader('Content-Type',path.endsWith('.css')?'text/css':'text/javascript; charset=utf-8');res.end(await readFile('.'+path));}catch{res.writeHead(404).end();}});
+await new Promise(r=>server.listen(4190,'127.0.0.1',r));
+const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+try{
+ const page=await browser.newPage({viewport:{width:1366,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{window.calls=[];window.notices=[];window.materials=[{id:'m1',name:'خامة المورد الأول',code:'001',unit:'ml',cost_price:2},{id:'m2',name:'خامة المورد الثاني',code:'002',unit:'Unit',cost_price:5}];window.catalog={suppliers:[{id:'s1',name:'مورد أول',phone:'010',address:'القاهرة'},{id:'s2',name:'مورد ثان'}],links:[{supplier_id:'s1',material_id:'m1',unit_cost:3},{supplier_id:'s2',material_id:'m2',unit_cost:5}]};});
+ const mock='export const escapeHtml=v=>String(v??"");export const today=()=> "2026-09-27";export const toast=m=>window.notices.push(m);export const supabase={rpc:async(name,args)=>{window.calls.push({name,args});return {data:name==="supplier_catalog"?window.catalog:name==="pending_stock_transfers"?[{id:"t1",branch_id:"b2",material_id:"m1",material_name:"Material",unit:"ml",quantity:2,unit_cost:3,date:"2026-09-27",source_name:"Source"}]:name==="import_material_prices"?args.rows.length:name==="available_stock"?1:"saved"};}};';
+ await page.route('**/supabase.js?*',r=>r.fulfill({contentType:'text/javascript',body:mock}));
+ await page.route('**/data.js?*',r=>r.fulfill({contentType:'text/javascript',body:'export const list=async()=>window.materials;export const searchMaterials=async()=>window.materials;export const insert=async(type,payload)=>{window.calls.push({name:"insert",type,payload});return payload;};'}));
+ await page.route('**/temp-material.js?*',r=>r.fulfill({contentType:'text/javascript',body:'export const openTemporaryMaterial=()=>{};'}));
+ await page.goto('http://127.0.0.1:4190');await page.addScriptTag({content:await readFile('.local/exceljs.cjs','utf8')});
+ await page.evaluate(async()=>{await(await import('/pages/procurement.js')).renderProcurement(document.querySelector('#root'));});
+ await page.locator('[name=supplier_name]').fill('مورد اختبار');await page.locator('[name=phone]').fill('01012345678');await page.locator('[name=address]').fill('عنوان المورد');await page.locator('[data-link=m1]').check();await page.locator('[data-price=m1]').fill('4');await page.locator('#supplier-form button.btn.primary').click();
+ const saved=await page.evaluate(()=>window.calls.find(c=>c.name==='save_supplier'));assert.equal(saved.args.items[0].unit_cost,4);assert.equal(saved.args.supplier_data.phone,'01012345678');
+ await page.locator('#calc-cost').fill('10');await page.locator('#calc-qty').fill('2');await page.locator('#calc-extra').fill('5');await page.locator('#calc-margin').fill('50');assert.match(await page.locator('#calc-result').innerText(),/50.00/);
+ const ExcelJS=createRequire(import.meta.url)('../.local/exceljs.cjs'),wb=new ExcelJS.Workbook(),ws=wb.addWorksheet('Prices');ws.addRow(['code','name','unit','category','cost_price']);ws.addRow(['001','خامة المورد الأول','ml','',7]);await writeFile('.local/pricing-ui-fixture.xlsx',await wb.xlsx.writeBuffer());
+ await page.locator('#price-file').setInputFiles('.local/pricing-ui-fixture.xlsx');await page.locator('#price-apply').waitFor({state:'visible'});assert.match(await page.locator('#price-preview').innerText(),/تحديث التكلفة فقط/);await page.locator('#price-apply').click();assert.equal((await page.evaluate(()=>window.calls.find(c=>c.name==='import_material_prices'))).args.rows[0].cost_price,7);
+ await page.screenshot({path:'.local/procurement-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.local/procurement-mobile.png',fullPage:true});
+ await page.evaluate(async()=>{await(await import('/pages/additions.js')).renderAdditions(document.querySelector('#root'),{id:'u',branch_id:'b1'});});
+ await page.selectOption('[name=supplier]','s1');assert.equal(await page.locator('#receipt-material option').count(),2);assert.equal(await page.locator('#receipt-material option[value=m2]').count(),0);await page.selectOption('#receipt-material','m1');assert.equal(await page.locator('#receipt-cost').inputValue(),'3');await page.locator('#receipt-qty').fill('10');await page.locator('#receipt-cost').fill('4');await page.locator('#receipt-add').click();await page.locator('[type=submit]').click();const receipt=await page.evaluate(()=>window.calls.find(c=>c.name==='insert'));assert.equal(receipt.payload[0].unit_cost,4);assert.equal(receipt.payload[0].source_kind,'supplier');
+ await page.selectOption('[name=source_kind]','branch');await page.selectOption('#receipt-transfer','t1');await page.locator('#transfer-add').click();await page.locator('[type=submit]').click();const transfer=await page.evaluate(()=>window.calls.filter(c=>c.name==='insert').at(-1));assert.equal(transfer.payload[0].transfer_record_id,'t1');assert.equal(transfer.payload[0].unit_cost,3);assert.deepEqual(errors,[]);
+ await page.evaluate(async()=>{localStorage.setItem('ctrl_consumption_draft_v1:u:b1',JSON.stringify({date:'2026-09-27',client_name:'TEST',record_type:'client',items:[{...window.materials[0],draft_quantity:'2',draft_price:'10'}]}));await(await import('/pages/consumption.js')).renderConsumption(document.querySelector('#root'),{id:'u',branch_id:'b1'});});
+ await page.locator('#consumption-form [type=submit]').click();
+ assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.name==='insert'&&c.type==='consumption').length),0);
+ assert.match((await page.evaluate(()=>window.notices)).at(-1),/المتاح/);
+ await page.locator('[data-q="0"]').fill('1');await page.locator('#consumption-form [type=submit]').click();
+ const sale=await page.evaluate(()=>window.calls.find(c=>c.name==='insert'&&c.type==='consumption'));
+ assert.equal(sale.payload[0].total_selling_price,10);assert.equal(sale.payload[0].unit_cost,undefined);
+ assert.deepEqual(errors,[]);
+ console.log('PASS supplier save/catalog filter, actual Excel preview/import, independent costs, margin calculator, supplier receipt, linked transfer, oversell UI rejection, independent sale price, desktop/mobile');
+}finally{await browser.close();await new Promise(r=>server.close(r));}

@@ -1,14 +1,15 @@
 import './theme.js';
+import { renderProcurement } from './pages/procurement.js?v=20260927-procurement';
 import { supabase } from './supabase.js?v=20260801-audit-context';
-import { renderConsumption } from './pages/consumption.js?v=20260901-cost-vials-v1';
-import { renderAdditions } from './pages/additions.js?v=20260801-auto-add-v2';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260927-accounting';
-import { renderReports } from './pages/reports.js?v=20260927-accounting';
+import { renderConsumption } from './pages/consumption.js?v=20260927-procurement';
+import { renderAdditions } from './pages/additions.js?v=20260927-procurement';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260927-procurement';
+import { renderReports } from './pages/reports.js?v=20260927-procurement';
 import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.27.1';
+const APP_VERSION = '2026.09.27.2';
 const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
 
@@ -73,10 +74,12 @@ async function refreshCurrentAccess() {
 
 await refreshCurrentAccess();
 
-const titles = { home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
+const titles = { procurement: 'الموردون والتسعير', home: 'لوحة التحكم', consumption: 'صرف المواد', additions: 'الإضافات', inventory: 'الجرد', reports: 'التقارير', records: 'إدارة السجلات', audit_logs: 'سجل التعديلات', settings: 'الإعدادات' };
 const content = document.getElementById('app-content');
 const sidebar = document.getElementById('sidebar');
 const permissions = profile.permissions || { home: true, consumption: true, additions: true, inventory: true, inventory_reports: true, inventory_all_reports: profile.role === 'admin', inventory_branch_activity: profile.role === 'admin', reports: true, records: profile.role === 'admin', edit_records: profile.role === 'admin', delete_records: profile.role === 'admin', audit_logs: profile.role === 'admin', settings: profile.role === 'admin' };
+
+permissions.procurement = permissions.settings;
 
 document.querySelectorAll('[data-user-name]').forEach(item => item.textContent = profile?.full_name || '');
 document.querySelectorAll('[data-branch-name]').forEach(item => item.textContent = profile?.branch_name || '');
@@ -166,6 +169,7 @@ async function route() {
     if (name === 'records') await renderRecords(content, profile);
     if (name === 'audit_logs') await renderAuditLogs(content, profile);
     if (name === 'settings') await renderSettings(content, profile);
+    if (name === 'procurement') await renderProcurement(content, profile);
     content.focus();
   } catch (error) {
     console.error(error);

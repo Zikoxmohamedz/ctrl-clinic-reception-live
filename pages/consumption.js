@@ -1,4 +1,4 @@
-import { today, toast, escapeHtml } from '../supabase.js?v=20260801-audit-context';
+import { supabase, today, toast, escapeHtml } from '../supabase.js?v=20260801-audit-context';
 import { list, insert, searchMaterials } from '../data.js?v=20260801-reception-features';
 import { openTemporaryMaterial } from './temp-material.js?v=20260730-temp-save-v2';
 
@@ -101,8 +101,13 @@ export async function renderConsumption(root, profile) {
   });
 
   function renderItems() {
-    tbody.innerHTML = items.map((material, index) => `<tr><td class="item-material" data-label="المادة"><span class="row-title">${escapeHtml(material.name)}</span><small class="row-sub">${escapeHtml(material.code)}</small></td><td class="item-unit" data-label="الوحدة">${escapeHtml(material.unit)}</td><td class="item-quantity" data-label="الكمية *"><input class="table-input" type="number" min="0.01" step="any" data-q="${index}" value="${escapeHtml(material.draft_quantity ?? '1')}" required></td><td class="item-price" data-label="إجمالي سعر البيع"><input class="table-input" type="number" min="0" step="any" data-p="${index}" value="${escapeHtml(material.draft_price ?? String(Number(material.default_price || 0)))}" placeholder="الإجمالي بدون ضرب في الكمية"></td><td class="item-remove"><button type="button" class="delete-icon" data-remove="${index}" aria-label="حذف ${escapeHtml(material.name)}">×</button></td></tr>`).join('');
+    tbody.innerHTML = items.map((material, index) => `<tr><td class="item-material" data-label="المادة"><span class="row-title">${escapeHtml(material.name)}</span><small class="row-sub">${escapeHtml(material.code)}</small></td><td class="item-unit" data-label="الوحدة">${escapeHtml(material.unit)}<small class="row-sub" data-stock="${material.id}"></small></td><td class="item-quantity" data-label="الكمية *"><input class="table-input" type="number" min="0.01" step="any" data-q="${index}" value="${escapeHtml(material.draft_quantity ?? '1')}" required></td><td class="item-price" data-label="إجمالي سعر البيع"><input class="table-input" type="number" min="0" step="any" data-p="${index}" value="${escapeHtml(material.draft_price ?? String(Number(material.default_price || 0)))}" placeholder="الإجمالي بدون ضرب في الكمية"></td><td class="item-remove"><button type="button" class="delete-icon" data-remove="${index}" aria-label="حذف ${escapeHtml(material.name)}">×</button></td></tr>`).join('');
     root.querySelector('#items-empty').hidden = items.length > 0;
+    for(const item of items) {
+      const cell=tbody.querySelector('[data-stock="'+item.id+'"]');
+      cell.textContent='جارٍ حساب المتاح...';
+      supabase.rpc('available_stock',{target_branch:profile.branch_id,target_material:item.id,at_date:form.date.value}).then(({data,error})=>{if(root.contains(cell))cell.textContent=error?'تعذر قراءة الرصيد':data===null?'الرصيد غير موثق':'المتاح: '+data;}).catch(()=>{if(root.contains(cell))cell.textContent='تعذر قراءة الرصيد';});
+    }
     tbody.querySelectorAll('[data-q]').forEach(input => input.oninput = () => {
       items[Number(input.dataset.q)].draft_quantity = input.value;
       persistDraft();
@@ -158,6 +163,7 @@ export async function renderConsumption(root, profile) {
     clearDraft();
   }, 0);
 
+  form.date.addEventListener('change',renderItems);
   restoreDraft();
   renderItems();
 
@@ -188,6 +194,11 @@ export async function renderConsumption(root, profile) {
     const button = form.querySelector('[type=submit]');
     button.disabled = true;
     try {
+      for (const row of payload) {
+        const {data: available,error} = await supabase.rpc('available_stock',{target_branch:profile.branch_id,target_material:row.material_id,at_date:row.date});
+        if(error)throw error;
+        if(available===null || Number(available)<row.quantity)throw new Error(`${items.find(m=>m.id===row.material_id).name}: الرصيد المتاح ${available===null?'غير موثق':available}، والمطلوب ${row.quantity}`);
+      }
       await insert('consumption', payload);
       toast(`تم تسجيل ${payload.length} مادة بنجاح`);
       const keptDate = form.date.value;
