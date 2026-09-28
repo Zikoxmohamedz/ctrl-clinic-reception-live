@@ -4,12 +4,12 @@ import { supabase } from './supabase.js?v=20260801-audit-context';
 import { renderConsumption } from './pages/consumption.js?v=20260928-shortage3';
 import { renderAdditions } from './pages/additions.js?v=20260928-picker';
 import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260928-shortage3';
-import { renderReports } from './pages/reports.js?v=20260928-shortage3';
+import { renderReports } from './pages/reports.js?v=20260928-reports5';
 import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.28.4';
+const APP_VERSION = '2026.09.28.5';
 const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
 
