@@ -81,7 +81,7 @@ export function calculateAccounts(source, materials, from, to) {
     if (!initialised) opening = balance;
     rows.push({ material, opening, added: clean(added), consumed: clean(consumed), transferred: clean(transferred), adjustment: unknownVariance ? null : adjustment, shortage: unknownVariance ? null : shortage, surplus: unknownVariance ? null : surplus, balance, actual, actualDate, actualAssumedMissing, baselineDate, foundingDate, foundingQuantity, excludedMovements,
       expected: opening === null ? null : clean(opening+added-consumed-transferred),
-      status: balance === null ? 'لا يوجد رصيد تأسيسي موثّق' : actualDate === to ? 'جرد فعلي بنهاية الفترة' : actualDate ? 'رصيد دفتري بعد آخر جرد' : 'رصيد دفتري من الافتتاحي' });
+      status: balance === null ? 'لا يوجد رصيد تأسيسي موثّق' : actualAssumedMissing ? 'رصيد بعد إثبات عجز لعدم إدراج الصنف' : actualDate === to ? 'جرد فعلي بنهاية الفترة' : actualDate ? 'رصيد دفتري بعد آخر جرد' : 'رصيد دفتري من الافتتاحي' });
   }
   ledger.sort((a,b) => a.date.localeCompare(b.date) || rank[a.type]-rank[b.type] || String(a.order).localeCompare(String(b.order)));
   return { rows, ledger, variances };

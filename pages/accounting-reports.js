@@ -1,10 +1,10 @@
 import { supabase, today, escapeHtml, toast } from '../supabase.js?v=20260801-audit-context';
-import { list } from '../data.js?v=20260928-shortage';
-import { calculateAccounts } from './accounting-engine.mjs?v=20260928-shortage';
-import { buildInsights, insightLabels, insightNotes } from './inventory-insights.mjs?v=20260928-shortage';
-import { dashboardHtml } from './accounting-dashboard.mjs?v=20260928-shortage';
-import { reportGuide } from './report-guide.mjs?v=20260928-shortage';
-import { procurementLabels, procurementReports } from './procurement-reports.mjs?v=20260928-shortage';
+import { list } from '../data.js?v=20260928-shortage3';
+import { calculateAccounts } from './accounting-engine.mjs?v=20260928-shortage3';
+import { buildInsights, insightLabels, insightNotes } from './inventory-insights.mjs?v=20260928-shortage3';
+import { dashboardHtml } from './accounting-dashboard.mjs?v=20260928-shortage3';
+import { reportGuide } from './report-guide.mjs?v=20260928-shortage3';
+import { procurementLabels, procurementReports } from './procurement-reports.mjs?v=20260928-shortage3';
 
 const labels = { chronological:'المجمع بالتواريخ لكل فرع', baselines:'افتتاح المدة لكل فرع', balances: 'أرصدة الفترة', consolidated: 'مجمع الأرصدة حسب الصنف', ledger: 'كشف حركة صنف', variances: 'العجز والزيادة', additions: 'الوارد', consumption: 'الصرف', transfers: 'التحويلات', summary: 'ملخص حركة الأصناف والفروع', history: 'سجل الجرد', review: 'تفسير الأرصدة السالبة والناقصة', valuation: 'قيمة المخزون', expiry: 'صلاحيات آخر جرد', ...insightLabels, ...procurementLabels, dashboard:'تحليل مؤشرات المخزون' };
 const types = { opening: 'رصيد تأسيسي', addition: 'إضافة', consumption: 'صرف', transfer: 'تحويل صادر', count: 'جرد فعلي' };
