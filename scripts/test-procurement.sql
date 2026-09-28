@@ -26,6 +26,9 @@ begin
  insert into consumption_records(branch_id,material_id,quantity,unit,date,created_by,record_type,transfer_to) values(b,m,2,'ml',today_date,u,'transfer',b2) returning id into tid;
  insert into stock_additions(branch_id,material_id,quantity,date,added_by,source_kind,source_branch_id,transfer_record_id,unit_cost) values(b2,m,2,today_date,u,'branch',b,tid,999);
  if (select unit_cost from stock_additions where transfer_record_id=tid)<>3 then raise exception 'Transfer cost was not preserved';end if;
+ insert into stock_additions(branch_id,material_id,quantity,date,added_by,source_kind,source_branch_id,unit_cost) values(b2,m2,7,today_date,u,'branch',b,999);
+ if stock_quantity_internal(b2,m2,today_date)<>7 or stock_quantity_internal(b,m2,today_date)<>6 then raise exception 'Declared receipt must affect recipient only';end if;
+ if (select unit_cost from stock_additions where branch_id=b2 and material_id=m2) is not null then raise exception 'Unmatched receipt must not invent a cost';end if;
  caught:=false;begin insert into stock_additions(branch_id,material_id,quantity,date,added_by,source_kind,source_branch_id,transfer_record_id) values(b2,m,2,today_date,u,'branch',b,tid);exception when others then caught:=true;end;if not caught then raise exception 'Duplicate transfer accepted';end if;
  caught:=false;begin perform import_material_prices(jsonb_build_array(jsonb_build_object('code',m::text,'name','TEST','unit','Pack','cost_price',10)));exception when others then caught:=true;end;if not caught then raise exception 'Unit-changing import accepted';end if;
  perform import_material_prices(jsonb_build_array(jsonb_build_object('code',m::text,'name','TEST MATERIAL','unit','ml','cost_price',20)));

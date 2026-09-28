@@ -1,10 +1,10 @@
 import { supabase, today, escapeHtml, toast } from '../supabase.js?v=20260801-audit-context';
-import { list } from '../data.js?v=20260927-procurement';
-import { calculateAccounts } from './accounting-engine.mjs?v=20260927-procurement';
-import { buildInsights, insightLabels, insightNotes } from './inventory-insights.mjs?v=20260927-procurement';
-import { dashboardHtml } from './accounting-dashboard.mjs?v=20260927-procurement';
-import { reportGuide } from './report-guide.mjs?v=20260927-procurement';
-import { procurementLabels, procurementReports } from './procurement-reports.mjs?v=20260927-procurement';
+import { list } from '../data.js?v=20260928-receipts';
+import { calculateAccounts } from './accounting-engine.mjs?v=20260928-receipts';
+import { buildInsights, insightLabels, insightNotes } from './inventory-insights.mjs?v=20260928-receipts';
+import { dashboardHtml } from './accounting-dashboard.mjs?v=20260928-receipts';
+import { reportGuide } from './report-guide.mjs?v=20260928-receipts';
+import { procurementLabels, procurementReports } from './procurement-reports.mjs?v=20260928-receipts';
 
 const labels = { chronological:'المجمع بالتواريخ لكل فرع', baselines:'افتتاح المدة لكل فرع', balances: 'أرصدة الفترة', consolidated: 'مجمع الأرصدة حسب الصنف', ledger: 'كشف حركة صنف', variances: 'العجز والزيادة', additions: 'الوارد', consumption: 'الصرف', transfers: 'التحويلات', summary: 'ملخص حركة الأصناف والفروع', history: 'سجل الجرد', review: 'تفسير الأرصدة السالبة والناقصة', valuation: 'قيمة المخزون', expiry: 'صلاحيات آخر جرد', ...insightLabels, ...procurementLabels, dashboard:'تحليل مؤشرات المخزون' };
 const types = { opening: 'رصيد تأسيسي', addition: 'إضافة', consumption: 'صرف', transfer: 'تحويل صادر', count: 'جرد فعلي' };
@@ -14,9 +14,9 @@ const sumKnown = (rows, key) => rows.every(r => r[key] != null) ? round(rows.red
 const base = r => ({ 'الفرع': r.branch.name, 'الصنف': r.material.name, 'كود الصنف': r.material.code || '', 'الوحدة': r.material.unit || '' });
 
 export function reportTables(groups, materialId = '') {
-  const rows = groups.flatMap(g => g.accounts.rows.map(r => ({ ...r, branch: g.branch }))).filter(r => !materialId || r.material.id === materialId);
+  const rows = groups.flatMap(g => g.accounts.rows.map(r => ({ ...r, branch: g.branch, period:g.period }))).filter(r => !materialId || r.material.id === materialId);
   const ledger = groups.flatMap(g => g.accounts.ledger.map(r => ({ ...r, branch: g.branch }))).filter(r => !materialId || r.material.id === materialId);
-  const balances = rows.map(r => ({ ...base(r), 'تاريخ تأسيس رصيد الصنف':r.foundingDate||'لم يجرد', 'رصيد أول الفترة أو أول جرد متاح': r.opening, 'الوارد بعد التأسيس': r.added, 'الصرف بعد التأسيس': r.consumed, 'التحويل الصادر': r.transferred, 'عجز جرود الفترة': r.shortage, 'زيادة جرود الفترة': r.surplus, 'رصيد نهاية الفترة': r.balance, 'آخر جرد فعلي': r.actual, 'تاريخ آخر جرد': r.actualDate || 'لم يجرد', 'حركات قبل تأسيس الرصيد':r.excludedMovements||0, 'الحالة': r.balance<0?'سالب دفتري — راجع الحركات':r.status }));
+  const balances = rows.map(r => ({ ...base(r), 'تاريخ رصيد أول الفترة':r.period?(r.foundingDate>=r.period.from?r.foundingDate:new Date(Date.parse(r.period.from+'T00:00:00Z')-86400000).toISOString().slice(0,10)):r.foundingDate, 'تاريخ رصيد نهاية الفترة':r.period?.to||'', 'تاريخ تأسيس رصيد الصنف':r.foundingDate||'لم يجرد', 'رصيد أول الفترة أو أول جرد متاح': r.opening, 'الوارد بعد التأسيس': r.added, 'الصرف بعد التأسيس': r.consumed, 'التحويل الصادر': r.transferred, 'عجز جرود الفترة': r.shortage, 'زيادة جرود الفترة': r.surplus, 'رصيد نهاية الفترة': r.balance, 'حالة جرد نهاية الفترة':r.actualDate===r.period?.to?'كمية فعلية مسجلة بنهاية الفترة':'لا يوجد عد مسجل بنهاية الفترة؛ راجع تاريخ آخر جرد','آخر جرد فعلي': r.actual, 'تاريخ آخر جرد': r.actualDate || 'لم يجرد', 'حركات قبل تأسيس الرصيد':r.excludedMovements||0, 'الحالة': r.balance<0?'سالب دفتري — راجع الحركات':r.status }));
   const materialGroups = new Map();
   rows.forEach(r => { if (!materialGroups.has(r.material.id)) materialGroups.set(r.material.id,[]); materialGroups.get(r.material.id).push(r); });
   const consolidated = [...materialGroups.values()].map(items => ({ 'الصنف': items[0].material.name, 'كود الصنف': items[0].material.code || '', 'الوحدة': items[0].material.unit || '', 'عدد الفروع': items.length,
@@ -46,7 +46,7 @@ export function reportTables(groups, materialId = '') {
       return account.rows.filter(r=>(!materialId||r.material.id===materialId)&&(r.balance!==null||r.added||r.consumed||g.source.entries.some(e=>e.session_id===s.id&&e.material_id===r.material.id))).map(r=>{
         const variance=account.variances.find(v=>v.material.id===r.material.id&&v.session_id===s.id);
         const counted=g.source.entries.some(e=>e.session_id===s.id&&e.material_id===r.material.id);
-        return {...base({...r,branch:g.branch}),'بداية فترة الحركات':start,'تاريخ الجرد':s.inventory_date,'نوع الجرد':!counted?'الصنف غير مجرود بهذه الجلسة':s.id===g.source.baseline?.session_id?'افتتاح المدة':variance?'جرد لاحق':'أول جرد للصنف','تاريخ تأسيس الصنف':r.foundingDate,'رصيد أول الفترة':r.opening,'الوارد':r.added,'الصرف':r.consumed,'التحويل الصادر':r.transferred,'الدفتري قبل الجرد':variance?.expected??(!counted?r.balance:null),'الجرد الفعلي':counted?r.actual:null,'العجز':variance&&variance.variance!==null?Math.max(0,-variance.variance):null,'الزيادة':variance&&variance.variance!==null?Math.max(0,variance.variance):null,'مرجع الجرد':s.id};
+        return {...base({...r,branch:g.branch}),'بداية فترة الحركات':start,'تاريخ الجرد':s.inventory_date,'نوع الجرد':!counted?'لم تُسجل كمية فعلية — يلزم استكمال الجرد':s.id===g.source.baseline?.session_id?'افتتاح المدة':variance?'جرد لاحق':'أول جرد للصنف','تاريخ تأسيس الصنف':r.foundingDate,'رصيد أول الفترة':r.opening,'الوارد':r.added,'الصرف':r.consumed,'التحويل الصادر':r.transferred,'الدفتري قبل الجرد':variance?.expected??(!counted?r.balance:null),'الجرد الفعلي':counted?r.actual:'لم يُسجل — ليس صفرًا','العجز':!counted?'يلزم تسجيل الكمية الفعلية':variance&&variance.variance!==null?Math.max(0,-variance.variance):'لا يوجد رصيد سابق للمقارنة','الزيادة':!counted?'يلزم تسجيل الكمية الفعلية':variance&&variance.variance!==null?Math.max(0,variance.variance):'لا يوجد رصيد سابق للمقارنة','مرجع الجرد':s.id};
       });
     });
   });
@@ -78,6 +78,7 @@ export async function renderAccountingReports(root, profile, showHistory) {
     </style><div class="page-intro"><div><h2>مركز التقارير</h2><p>ابدأ بالمجمع بالتواريخ، أو اختار التقرير المناسب من القائمة.</p></div><button class="btn" id="account-history">تفاصيل الجرد والصور</button></div>
     <div class="account-shortcuts"><button data-shortcut="chronological"><strong>المجمع بالتواريخ</strong><small>افتتاح المدة ثم كل جرد وحركاته، لكل فرع.</small></button><button data-shortcut="balances"><strong>أرصدة الفترة</strong><small>الرصيد والحركات لكل صنف، مع تاريخ تأسيسه.</small></button><button data-shortcut="ledger"><strong>كشف صنف</strong><small>كل حركة للصنف وتأثيرها على رصيده.</small></button></div>
     <section class="panel"><form class="panel-body filters" id="account-form">
+    <label>شهر التقرير — يحدد الفترة تلقائيًا<input type="month" name="report_month" value="" max="${now.slice(0,7)}"></label>
     <label>من تاريخ<input type="date" name="from" value="2026-07-31" required></label>
     <label>إلى تاريخ<input type="date" name="to" value="${now}" max="${now}" required></label>
     <label>الفرع<select name="branch"><option value="">كل الفروع المسموحة</option>${branches.map(b=>`<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)}</option>`).join('')}</select></label>
@@ -87,7 +88,7 @@ export async function renderAccountingReports(root, profile, showHistory) {
     <label class="account-check"><input type="checkbox" name="include_empty">إظهار أصناف بلا سجلات أيضًا</label>
     <button class="btn primary" type="submit">عرض التقارير</button><button class="btn" type="button" id="account-august">جرد 31/8/2026</button>
     </form></section>
-    <p class="muted">الافتتاح المعتمد: جرد 31/7/2026 أو أقرب جرد مكتمل بتاريخه الحقيقي. الأصناف غير المجرودة رصيدها غير متاح؛ لا تُعتبر صفرًا. الحركات السابقة لتأسيس الصنف تظهر في كشف الحركة ولا تُخصم مرة أخرى من الجرد.</p>
+    <p class="muted">الافتتاح المعتمد: جرد 31/7/2026 أو أقرب جرد مكتمل بتاريخه الحقيقي. الصنف بدون كمية فعلية في الجلسة يحتاج استكمال الجرد؛ يحتفظ برصيده الدفتري إن كان موثقًا. سجل صفرًا فقط إذا تم العد ولم توجد كمية، ليُحسب العجز. الحركات السابقة لتأسيس الصنف تظهر في كشف الحركة ولا تُخصم مرة أخرى من الجرد.</p>
     <div id="account-status" role="status"></div><label id="account-search-label">الوصول السريع لتقرير<input id="account-report-search" type="search" placeholder="اكتب مثلًا: توريد، صنف، عجز" aria-label="البحث في أسماء التقارير"></label><select id="account-mobile-picker" aria-label="اختار التقرير">${Object.entries(labels).map(([key,label])=>`<option value="${key}">${label}</option>`).join('')}</select><nav class="reports-tab-nav" id="account-tabs">${Object.entries(labels).map(([key,label])=>`<button class="reports-tab-btn" type="button" data-tab="${key}">${label}</button>`).join('')}</nav>
     <section class="panel"><div class="panel-head"><h3 id="account-title"></h3><div class="reports-header-actions"><button class="btn" data-download="one">Excel التقرير</button><button class="btn primary" data-download="branches">Excel كل فرع بشيت</button><button class="btn" data-download="all">كل التقارير Excel</button><button class="btn" id="account-print">طباعة / PDF</button></div></div><div class="panel-body" id="account-output"></div></section>`;
   const form=root.querySelector('#account-form'), output=root.querySelector('#account-output'), status=root.querySelector('#account-status');
@@ -165,7 +166,7 @@ export async function renderAccountingReports(root, profile, showHistory) {
         source.consumption=source.consumption.map(r=>({...r,destination:allBranches.find(b=>b.id===r.transfer_to)?.name||''}));
         const relevant=new Set([...source.entries,...source.additions,...source.consumption,...source.openings].map(r=>r.material_id));
         const scope=materials.filter(m=>params.includeEmpty||relevant.has(m.id)||m.id===params.material);
-        return {branch,source,accounts:calculateAccounts(source,scope,params.from,params.to)};
+        return {branch,source,period:{from:params.from,to:params.to},accounts:calculateAccounts(source,scope,params.from,params.to)};
       }));
       if(ticket!==version||!root.contains(output))return;
       groups=loaded;applied=params;tables=reportTables(groups,params.material);page=1;
@@ -177,6 +178,8 @@ export async function renderAccountingReports(root, profile, showHistory) {
     }catch(error){if(ticket!==version)return;tables={};output.innerHTML='<div class="empty-state">تعذر تحميل التقرير كاملًا. حاول مرة أخرى.</div>';status.textContent=error.message||'خطأ في الاتصال';}
   };
   form.onsubmit=e=>{e.preventDefault();load();};
-  root.querySelector('#account-august').onclick=()=>{form.elements.from.value='2026-08-01';form.elements.to.value='2026-08-31';load();};
+  const selectMonth=month=>{if(!/^\d{4}-\d{2}$/.test(month))return;const [year,m]=month.split('-').map(Number);form.elements.from.value=month+'-01';form.elements.to.value=[new Date(Date.UTC(year,m,0)).toISOString().slice(0,10),now].sort()[0];active='balances';root.querySelector('#account-mobile-picker').value=active;load();};
+  form.elements.report_month.onchange=()=>selectMonth(form.elements.report_month.value);
+  root.querySelector('#account-august').onclick=()=>{form.elements.report_month.value='2026-08';selectMonth('2026-08');};
   await load();
 }

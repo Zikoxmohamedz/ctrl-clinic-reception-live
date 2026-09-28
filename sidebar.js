@@ -1,15 +1,15 @@
 import './theme.js';
-import { renderProcurement } from './pages/procurement.js?v=20260927-procurement';
+import { renderProcurement } from './pages/procurement.js?v=20260928-receipts';
 import { supabase } from './supabase.js?v=20260801-audit-context';
-import { renderConsumption } from './pages/consumption.js?v=20260927-procurement';
-import { renderAdditions } from './pages/additions.js?v=20260927-procurement';
-import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260927-procurement';
-import { renderReports } from './pages/reports.js?v=20260927-procurement';
+import { renderConsumption } from './pages/consumption.js?v=20260928-receipts';
+import { renderAdditions } from './pages/additions.js?v=20260928-receipts';
+import { renderInventory, cleanupInventory } from './pages/inventory.js?v=20260928-receipts';
+import { renderReports } from './pages/reports.js?v=20260928-receipts';
 import { renderRecords } from './pages/records.js?v=20260901-notes-v1';
 import { renderAuditLogs } from './pages/audit-logs.js?v=20260901-cost-vials-v1';
 import { renderSettings } from './pages/settings.js?v=20260901-cost-vials-v1';
 
-const APP_VERSION = '2026.09.27.2';
+const APP_VERSION = '2026.09.28.1';
 const VERSION_ACK_KEY = 'ctrl_acknowledged_app_version';
 let versionCheckTimer;
 

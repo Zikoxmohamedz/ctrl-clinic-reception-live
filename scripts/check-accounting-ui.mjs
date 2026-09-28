@@ -23,6 +23,10 @@ try{
  await page.evaluate(async()=>{const m=await import('/pages/accounting-reports.js');await m.renderAccountingReports(document.querySelector('#root'),{role:'admin'},()=>{});});
  await page.selectOption('[name=branch]',dataset.groups.find(g=>g.branch.name==='Haram').branch.id);
  await page.click('#account-august');await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('1 فرع'));
+ assert.equal(await page.locator('[name=report_month]').inputValue(),'2026-08');
+ assert.equal(await page.locator('[name=from]').inputValue(),'2026-08-01');
+ assert.equal(await page.locator('[name=to]').inputValue(),'2026-08-31');
+ assert.match(await page.locator('#account-output').innerText(),/2026-07-31/);
  assert.match(await page.locator('#account-output').innerText(),/2026-08-31/);
  await page.screenshot({path:'.local/accounting-reports-desktop.png',fullPage:true});
  for(const key of await page.locator('#account-mobile-picker option').evaluateAll(options=>options.map(o=>o.value))){await page.selectOption('#account-mobile-picker',key);assert.ok(await page.locator('#account-title').innerText());}

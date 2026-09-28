@@ -161,6 +161,9 @@ begin
   if new.supplier_id is null or new.source_branch_id is not null or new.transfer_record_id is not null then raise exception 'بيانات المورد غير صحيحة'; end if;
   if not exists(select 1 from supplier_materials where supplier_id=new.supplier_id and material_id=new.material_id) then raise exception 'الصنف غير مرتبط بالمورد المختار'; end if;
   if new.unit_cost is null then raise exception 'أدخل تكلفة وحدة المخزون'; end if;
+ elsif new.transfer_record_id is null then
+  if new.source_branch_id is null or new.source_branch_id=new.branch_id or new.supplier_id is not null or not exists(select 1 from branches where id=new.source_branch_id) then raise exception 'اختر مخزنًا أو فرعًا مصدرًا مختلفًا عن الفرع المستلم'; end if;
+  new.unit_cost:=null;
  else
   select * into tr from consumption_records where id=new.transfer_record_id for update;
   if not found or tr.record_type<>'transfer' or tr.transfer_to<>new.branch_id or tr.branch_id is distinct from new.source_branch_id or tr.material_id<>new.material_id or tr.quantity<>new.quantity or new.supplier_id is not null or tr.date>new.date then raise exception 'الاستلام يجب أن يطابق تحويلًا صادرًا للفرع: الصنف والكمية والتاريخ'; end if;
