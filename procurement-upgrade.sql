@@ -1,3 +1,4 @@
+-- Apply missing-count-shortage-upgrade.sql after this migration to retain the owner-approved omission rule.
 begin;
 create table if not exists public.suppliers (
  id uuid primary key default gen_random_uuid(), name text not null check(length(trim(name))>0),

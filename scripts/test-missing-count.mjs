@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {calculateAccounts} from '../pages/accounting-engine.mjs';
+const materials=[{id:'a'},{id:'b'},{id:'unknown'},{id:'negative'}];
+const source={missing_count_policy:'shortage',baseline:{date:'2026-07-31'},openings:[],sessions:[{id:'j',inventory_date:'2026-07-31',status:'completed'},{id:'a',inventory_date:'2026-08-31',status:'completed'},{id:'empty',inventory_date:'2026-09-01',status:'completed'}],entries:[{session_id:'j',material_id:'a',quantity:100},{session_id:'j',material_id:'negative',quantity:1},{session_id:'a',material_id:'b',quantity:5}],additions:[{material_id:'a',date:'2026-08-10',quantity:100}],consumption:[{material_id:'a',date:'2026-08-20',quantity:50},{material_id:'negative',date:'2026-08-20',quantity:2}]};
+const result=calculateAccounts(source,materials,'2026-08-01','2026-08-31');
+assert.equal(result.rows[0].balance,0);assert.equal(result.rows[0].shortage,150);assert.equal(result.rows[0].actualAssumedMissing,true);assert.equal(result.variances[0].expected,150);
+assert.equal(result.rows[2].balance,null);assert.equal(result.rows[3].balance,-1);
+const next=calculateAccounts(source,materials,'2026-09-01','2026-09-30');assert.equal(next.rows[0].opening,0);assert.equal(next.rows[1].balance,5);
+const open=calculateAccounts({...source,sessions:source.sessions.map(s=>s.id==='a'?{...s,status:'active'}:s)},materials,'2026-08-01','2026-08-31');assert.equal(open.rows[0].balance,150);
+console.log('PASS omitted positive balance => shortage and zero carry-forward; open/empty counts and unknown/negative balances excluded');

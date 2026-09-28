@@ -1,5 +1,5 @@
 import { supabase,today,toast,escapeHtml as esc } from '../supabase.js?v=20260801-audit-context';
-import { list,insert } from '../data.js?v=20260928-receipts';
+import { list,insert } from '../data.js?v=20260928-shortage';
 export async function renderAdditions(root,profile){
  const [materials,branches,catalog,transfers]=await Promise.all([list('materials'),list('branches'),supabase.rpc('supplier_catalog'),supabase.rpc('pending_stock_transfers',{target_branch:profile.branch_id})]);
  if(catalog.error)throw catalog.error;if(transfers.error)throw transfers.error;

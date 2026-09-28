@@ -23,6 +23,11 @@ export function calculateAccounts(source, materials, from, to) {
   source.additions.forEach(a => add({ ...a, type: 'addition', order: a.created_at }));
   source.consumption.forEach(c => add({ ...c, type: c.record_type === 'transfer' ? 'transfer' : 'consumption', order: c.created_at }));
   counts.forEach(add);
+  if (source.missing_count_policy === 'shortage') {
+    for (const session of source.sessions.filter(s => s.status === 'completed' && s.inventory_date >= anchor && source.entries.some(e => e.session_id === s.id))) {
+      for (const material of materials) if (!counts.has(`${session.id}|${material.id}`)) add({material_id:material.id,date:session.inventory_date,quantity:0,type:'count',id:session.id,order:session.completed_at||session.created_at,assumedMissing:true});
+    }
+  }
   const rank = { receipt_opening: -1, addition: 0, consumption: 0, transfer: 0, opening: 1, count: 2 };
   const materialMap = new Map(materials.map(m => [m.id, m]));
   const rows = [], ledger = [], variances = [];
@@ -30,9 +35,10 @@ export function calculateAccounts(source, materials, from, to) {
     history.sort((a,b) => a.date.localeCompare(b.date) || rank[a.type]-rank[b.type] || String(a.order).localeCompare(String(b.order)) || String(a.id).localeCompare(String(b.id)));
     const material = materialMap.get(materialId) || { id: materialId, name: materialId };
     let balance = null, opening = null, added = 0, consumed = 0, transferred = 0, adjustment = 0, shortage = 0, surplus = 0, actual = null, actualDate = '', baselineDate = '', unknownVariance = false, initialised = false;
-    let foundingDate = '', foundingQuantity = null, excludedMovements = 0;
+    let foundingDate = '', foundingQuantity = null, excludedMovements = 0, actualAssumedMissing = false;
     for (const event of history) {
       if (event.date > to) break;
+      if (event.assumedMissing && !(balance > 0)) continue;
       const inPeriod = event.date >= from;
       if (inPeriod && !initialised) { opening = balance; initialised = true; }
       const before = balance;
@@ -54,10 +60,11 @@ export function calculateAccounts(source, materials, from, to) {
         variance = before === null ? null : clean(quantity-before);
         delta = variance;
         balance = quantity; actual = quantity; actualDate = event.date; baselineDate = event.date;
+        actualAssumedMissing = !!event.assumedMissing;
         if (inPeriod && !establishes) {
           if (variance === null) unknownVariance = true;
           else { adjustment = clean(adjustment+variance); shortage = clean(shortage+Math.max(0,-variance)); surplus = clean(surplus+Math.max(0,variance)); }
-          variances.push({ material, date: event.date, expected: before, actual: quantity, variance, session_id: event.id });
+          variances.push({ material, date: event.date, expected: before, actual: quantity, variance, session_id: event.id, assumedMissing: !!event.assumedMissing });
         }
       } else {
         delta = event.type === 'addition' ? quantity : -quantity;
@@ -72,7 +79,7 @@ export function calculateAccounts(source, materials, from, to) {
       if (inPeriod) ledger.push({ ...event, type: establishes ? 'opening' : event.type, material, before, delta, balance, variance, excluded: strict && before === null && !establishes });
     }
     if (!initialised) opening = balance;
-    rows.push({ material, opening, added: clean(added), consumed: clean(consumed), transferred: clean(transferred), adjustment: unknownVariance ? null : adjustment, shortage: unknownVariance ? null : shortage, surplus: unknownVariance ? null : surplus, balance, actual, actualDate, baselineDate, foundingDate, foundingQuantity, excludedMovements,
+    rows.push({ material, opening, added: clean(added), consumed: clean(consumed), transferred: clean(transferred), adjustment: unknownVariance ? null : adjustment, shortage: unknownVariance ? null : shortage, surplus: unknownVariance ? null : surplus, balance, actual, actualDate, actualAssumedMissing, baselineDate, foundingDate, foundingQuantity, excludedMovements,
       expected: opening === null ? null : clean(opening+added-consumed-transferred),
       status: balance === null ? 'لا يوجد رصيد تأسيسي موثّق' : actualDate === to ? 'جرد فعلي بنهاية الفترة' : actualDate ? 'رصيد دفتري بعد آخر جرد' : 'رصيد دفتري من الافتتاحي' });
   }
