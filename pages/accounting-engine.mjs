@@ -19,7 +19,7 @@ export function calculateAccounts(source, materials, from, to) {
   const events = new Map(materials.map(m => [m.id, []]));
   const add = event => { if (!events.has(event.material_id)) events.set(event.material_id, []); events.get(event.material_id).push(event); };
   if (!strict) source.openings.forEach(o => add({ ...o, date: cairoDate(o.opened_at), type: 'opening', order: o.opened_at }));
-  (source.receipt_foundations || []).forEach(f => add({ ...f, quantity: 0, type: 'receipt_opening', order: '' }));
+  (source.receipt_foundations || []).filter(f => source.additions.some(a => a.material_id === f.material_id && a.date <= to)).forEach(f => add({ ...f, quantity: 0, type: 'receipt_opening', order: '' }));
   source.additions.forEach(a => add({ ...a, type: 'addition', order: a.created_at }));
   source.consumption.forEach(c => add({ ...c, type: c.record_type === 'transfer' ? 'transfer' : 'consumption', order: c.created_at }));
   counts.forEach(add);
@@ -81,7 +81,7 @@ export function calculateAccounts(source, materials, from, to) {
     if (!initialised) opening = balance;
     rows.push({ material, opening, added: clean(added), consumed: clean(consumed), transferred: clean(transferred), adjustment: unknownVariance ? null : adjustment, shortage: unknownVariance ? null : shortage, surplus: unknownVariance ? null : surplus, balance, actual, actualDate, actualAssumedMissing, baselineDate, foundingDate, foundingQuantity, excludedMovements,
       expected: opening === null ? null : clean(opening+added-consumed-transferred),
-      status: balance === null ? 'لا يوجد رصيد تأسيسي موثّق' : actualAssumedMissing ? 'رصيد بعد إثبات عجز لعدم إدراج الصنف' : actualDate === to ? 'جرد فعلي بنهاية الفترة' : actualDate ? 'رصيد دفتري بعد آخر جرد' : 'رصيد دفتري من الافتتاحي' });
+      status: balance === null ? 'لا يوجد رصيد تأسيسي موثّق' : actualAssumedMissing ? 'رصيد بعد إثبات عجز لعدم إدراج الصنف' : actualDate === to ? 'جرد فعلي بنهاية الفترة' : actualDate ? 'رصيد دفتري بعد آخر جرد' : (foundingDate ? 'رصيد دفتري من الإضافات والصرف المسجلين' : 'رصيد دفتري من الافتتاحي') });
   }
   ledger.sort((a,b) => a.date.localeCompare(b.date) || rank[a.type]-rank[b.type] || String(a.order).localeCompare(String(b.order)));
   return { rows, ledger, variances };

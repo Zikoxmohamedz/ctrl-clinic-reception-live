@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import { calculateAccounts } from '../pages/accounting-engine.mjs';
+const materials=[{id:'m',name:'Receipt-only material'}];
+const source={baseline:{date:'2026-07-31'},openings:[],sessions:[],entries:[],receipt_foundations:[{material_id:'m',date:'2026-08-01'}],consumption:[{material_id:'m',date:'2026-08-01',quantity:2}],additions:[{material_id:'m',date:'2026-08-03',quantity:10}]};
+const balance=to=>calculateAccounts(source,materials,'2026-07-31',to).rows[0].balance;
+assert.equal(balance('2026-08-02'),null,'A later receipt must not establish a past balance');
+assert.equal(balance('2026-08-03'),8,'Recorded prior outgoings must be deducted');
+source.consumption.push({material_id:'m',date:'2026-08-04',quantity:3});
+assert.equal(balance('2026-08-04'),5);
+source.sessions.push({id:'count',status:'completed',inventory_date:'2026-08-05'});
+source.entries.push({session_id:'count',material_id:'m',quantity:4});
+assert.equal(balance('2026-08-05'),4,'A later physical count remains authoritative');
+console.log('Receipt-only balances, historical cutoffs, outgoings and later counts passed.');
